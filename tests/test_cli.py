@@ -25,41 +25,66 @@ def test_main_with_no_arguments(capsys):
 
         captured = capsys.readouterr()
         assert "usage: pagemap" in captured.err
-        assert "domain" in captured.err
+        assert "target" in captured.err
 
 def test_main_with_domain():
     """Test main function with a valid domain argument"""
     mock_crawler = MagicMock()
 
+    with patch('pagemap.cli.requests.head'):
+        with patch('pagemap.cli.WebsiteCrawler', return_value=mock_crawler):
+            with patch.object(sys, 'argv', ['pagemap', 'example.com']):
+                main()
+
+                mock_crawler.crawl.assert_called_once_with(recursive=False, pages_only=False, max_pages=1000, max_depth=10)
+                mock_crawler.save_results.assert_called_once()
+
+def test_main_with_full_url():
+    """Test main function with a full URL (skips HTTPS probe)"""
+    mock_crawler = MagicMock()
+
     with patch('pagemap.cli.WebsiteCrawler', return_value=mock_crawler):
-        with patch.object(sys, 'argv', ['pagemap', 'example.com']):
+        with patch.object(sys, 'argv', ['pagemap', 'http://example.com']):
             main()
 
             mock_crawler.crawl.assert_called_once_with(recursive=False, pages_only=False, max_pages=1000, max_depth=10)
             mock_crawler.save_results.assert_called_once()
 
+def test_main_bare_domain_https_fails(capsys, reset_logging):
+    """Test that bare domain with HTTPS failure exits with helpful message"""
+    import requests as req
+    with patch('pagemap.cli.requests.head', side_effect=req.ConnectionError("refused")):
+        with patch.object(sys, 'argv', ['pagemap', 'myserver.lan']):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 1
+            captured = capsys.readouterr()
+            assert "pagemap http://myserver.lan" in captured.err
+
 def test_main_with_external_links():
     """Test main function with external links flag"""
     mock_crawler = MagicMock()
 
-    with patch('pagemap.cli.WebsiteCrawler', return_value=mock_crawler):
-        with patch.object(sys, 'argv', ['pagemap', 'example.com', '-e']):
-            main()
+    with patch('pagemap.cli.requests.head'):
+        with patch('pagemap.cli.WebsiteCrawler', return_value=mock_crawler):
+            with patch.object(sys, 'argv', ['pagemap', 'example.com', '-e']):
+                main()
 
-            mock_crawler.crawl.assert_called_once_with(collect_external=True, recursive=False, pages_only=False, max_pages=1000, max_depth=10)
-            mock_crawler.save_external_links_results.assert_called_once()
-            assert not mock_crawler.save_results.called
+                mock_crawler.crawl.assert_called_once_with(collect_external=True, recursive=False, pages_only=False, max_pages=1000, max_depth=10)
+                mock_crawler.save_external_links_results.assert_called_once()
+                assert not mock_crawler.save_results.called
 
 def test_main_with_recursive():
     """Test main function with recursive flag"""
     mock_crawler = MagicMock()
 
-    with patch('pagemap.cli.WebsiteCrawler', return_value=mock_crawler):
-        with patch.object(sys, 'argv', ['pagemap', 'example.com', '-r']):
-            main()
+    with patch('pagemap.cli.requests.head'):
+        with patch('pagemap.cli.WebsiteCrawler', return_value=mock_crawler):
+            with patch.object(sys, 'argv', ['pagemap', 'example.com', '-r']):
+                main()
 
-            mock_crawler.crawl.assert_called_once_with(recursive=True, pages_only=False, max_pages=1000, max_depth=10)
-            mock_crawler.save_results.assert_called_once()
+                mock_crawler.crawl.assert_called_once_with(recursive=True, pages_only=False, max_pages=1000, max_depth=10)
+                mock_crawler.save_results.assert_called_once()
 
 def test_setup_logging_verbose(reset_logging):
     """Test logging setup in verbose mode"""
@@ -77,23 +102,25 @@ def test_main_with_error(capsys, reset_logging):
     test_error = Exception("Network error")
     mock_crawler.crawl.side_effect = test_error
 
-    with patch('pagemap.cli.WebsiteCrawler', return_value=mock_crawler):
-        with patch.object(sys, 'argv', ['pagemap', 'example.com']):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
+    with patch('pagemap.cli.requests.head'):
+        with patch('pagemap.cli.WebsiteCrawler', return_value=mock_crawler):
+            with patch.object(sys, 'argv', ['pagemap', 'example.com']):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
 
-            assert exc_info.value.code == 1
-            captured = capsys.readouterr()
-            assert "An error occurred: Network error" in captured.err
+                assert exc_info.value.code == 1
+                captured = capsys.readouterr()
+                assert "An error occurred: Network error" in captured.err
 
 def test_main_with_all_options():
     """Test main function with all flags enabled"""
     mock_crawler = MagicMock()
 
-    with patch('pagemap.cli.WebsiteCrawler', return_value=mock_crawler):
-        with patch.object(sys, 'argv', ['pagemap', 'example.com', '-e', '-v', '-r']):
-            main()
+    with patch('pagemap.cli.requests.head'):
+        with patch('pagemap.cli.WebsiteCrawler', return_value=mock_crawler):
+            with patch.object(sys, 'argv', ['pagemap', 'example.com', '-e', '-v', '-r']):
+                main()
 
-            mock_crawler.crawl.assert_called_once_with(collect_external=True, recursive=True, pages_only=False, max_pages=1000, max_depth=10)
-            mock_crawler.save_external_links_results.assert_called_once()
-            assert not mock_crawler.save_results.called
+                mock_crawler.crawl.assert_called_once_with(collect_external=True, recursive=True, pages_only=False, max_pages=1000, max_depth=10)
+                mock_crawler.save_external_links_results.assert_called_once()
+                assert not mock_crawler.save_results.called

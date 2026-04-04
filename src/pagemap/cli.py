@@ -4,6 +4,8 @@ import sys
 import argparse
 import logging
 from datetime import datetime
+from urllib.parse import urlparse
+import requests
 from pagemap.crawler import WebsiteCrawler
 
 
@@ -30,8 +32,8 @@ def main():
         description="Crawl a website and create a structured map of its pages"
     )
     parser.add_argument(
-        "domain",
-        help="Domain to crawl (e.g., example.com)"
+        "target",
+        help="Domain or URL to crawl (e.g., example.com or http://example.com)"
     )
     parser.add_argument(
         "-e", "--external-links",
@@ -86,8 +88,28 @@ def main():
     setup_logging(args.verbose)
 
     try:
-        safe_domain = args.domain.replace('/', '_').replace('\\', '_').replace('..', '_')
-        crawler = WebsiteCrawler(args.domain, timeout=args.timeout,
+        target = args.target
+        parsed = urlparse(target)
+
+        # If bare domain (no scheme), probe HTTPS first
+        if parsed.scheme not in ('http', 'https'):
+            probe_url = f"https://{target}"
+            try:
+                requests.head(probe_url, timeout=5, allow_redirects=True)
+                target = probe_url
+            except requests.ConnectionError:
+                logging.error(
+                    f"Could not connect to {probe_url}\n"
+                    f"If this site uses HTTP, provide the full URL:\n"
+                    f"  pagemap http://{target}"
+                )
+                sys.exit(1)
+
+        # Extract domain for safe filename
+        parsed = urlparse(target)
+        safe_domain = parsed.netloc.replace('/', '_').replace('\\', '_').replace('..', '_')
+
+        crawler = WebsiteCrawler(target, timeout=args.timeout,
                                   allow_private=args.allow_private,
                                   ignore_robots=args.ignore_robots)
         timestamp = datetime.now().strftime("%Y-%m-%dT%H%M")

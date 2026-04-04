@@ -65,12 +65,21 @@ def validate_domain_ssrf(domain: str) -> None:
 class WebsiteCrawler:
     USER_AGENT = 'Mozilla/5.0 (compatible; pagemap/0.1.0; +https://github.com/cadentdev/pagemap)'
 
-    def __init__(self, domain: str, timeout: int = 30, allow_private: bool = False,
+    def __init__(self, target: str, timeout: int = 30, allow_private: bool = False,
                  ignore_robots: bool = False):
-        self.domain = domain
+        # Parse target: accept full URL (http://example.com) or bare domain (example.com)
+        parsed = urlparse(target)
+        if parsed.scheme in ('http', 'https'):
+            self.domain = parsed.netloc
+            self.base_url = f"{parsed.scheme}://{parsed.netloc}"
+        else:
+            # Bare domain — assume HTTPS
+            self.domain = target
+            self.base_url = f"https://{target}"
+
         if not allow_private:
-            validate_domain_ssrf(domain)
-        self.base_url = f"https://{domain}"
+            validate_domain_ssrf(self.domain)
+
         # Normalize the base URL
         self.base_url, _ = self.process_url(self.base_url)
         self.visited_urls: Set[str] = set()

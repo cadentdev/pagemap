@@ -26,9 +26,14 @@ pagemap example.com -r -e
 # Only crawl web pages (skip images, PDFs, etc.)
 pagemap example.com -r -p
 
+# Crawl an HTTP-only site (e.g., LAN staging server)
+pagemap http://staging.lan --allow-private
+
 # Verbose output for debugging
 pagemap example.com -r -v
 ```
+
+The target accepts a bare domain (`example.com`) or a full URL (`http://example.com`). Bare domains default to HTTPS — if the connection fails, pagemap exits with a message to provide the full URL.
 
 ## Options
 

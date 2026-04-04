@@ -130,6 +130,25 @@ This creates user confusion and sets false expectations. The README appears to h
 
 ---
 
+## New — Found During Testing
+
+### [x] Support HTTP-only sites (--http flag or auto-detect)
+
+**File:** `src/pagemap/crawler.py:73`
+**Current:** `self.base_url = f"https://{domain}"` — hardcoded HTTPS.
+
+The crawler assumes all targets use HTTPS. HTTP-only sites (e.g., LAN staging servers like `bnhc-stage-15.lan`) time out on port 443 with no fallback. Discovered during live testing with `--allow-private`.
+
+**Option A:** Add `--http` CLI flag to force `http://` scheme.
+**Option B:** Auto-detect — try HTTPS first, fall back to HTTP on connection failure.
+**Option C:** Accept a full URL as input instead of bare domain (breaking change to CLI interface).
+
+Option A is simplest and most explicit. Option B adds resilience but masks misconfiguration. Option C is the most correct long-term but changes the CLI contract.
+
+**Effort:** ~5 lines for Option A, ~15 lines for Option B.
+
+---
+
 ## Audit Notes
 
 **Clean areas (no issues found):**
