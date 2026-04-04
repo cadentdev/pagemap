@@ -6,6 +6,7 @@ import socket
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+from urllib.robotparser import RobotFileParser
 from typing import Set, List, Tuple
 import time
 import logging
@@ -62,7 +63,10 @@ def validate_domain_ssrf(domain: str) -> None:
         raise CrawlingError(f"Cannot resolve domain '{domain}': {e}")
 
 class WebsiteCrawler:
-    def __init__(self, domain: str, timeout: int = 30, allow_private: bool = False):
+    USER_AGENT = 'Mozilla/5.0 (compatible; pagemap/0.1.0; +https://github.com/cadentdev/pagemap)'
+
+    def __init__(self, domain: str, timeout: int = 30, allow_private: bool = False,
+                 ignore_robots: bool = False):
         self.domain = domain
         if not allow_private:
             validate_domain_ssrf(domain)
@@ -74,11 +78,10 @@ class WebsiteCrawler:
         self.external_links: Set[str] = set()
         self.pages_only: bool = False
         self.timeout = timeout
+        self.ignore_robots = ignore_robots
+        self.robot_parser: RobotFileParser | None = None
         self.session = requests.Session()
-        # Set a user agent to be more polite
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (compatible; pagemap/0.1.0; +https://github.com/cadentdev/pagemap)'
-        })
+        self.session.headers.update({'User-Agent': self.USER_AGENT})
 
     def process_url(self, url: str) -> Tuple[str, bool]:
         """
@@ -139,6 +142,31 @@ class WebsiteCrawler:
             logger.debug(f"Error checking if URL is page: {str(e)}")
             return False
 
+    def _load_robots_txt(self) -> None:
+        """Fetch and parse robots.txt for the target domain."""
+        if self.ignore_robots:
+            return
+        robots_url = f"{self.base_url}/robots.txt"
+        try:
+            resp = self.session.get(robots_url, timeout=self.timeout)
+            if resp.status_code == 200:
+                rp = RobotFileParser()
+                rp.set_url(robots_url)
+                rp.parse(resp.text.splitlines())
+                self.robot_parser = rp
+                logger.info(f"Loaded robots.txt from {robots_url}")
+            else:
+                logger.info(f"No robots.txt found at {robots_url} (HTTP {resp.status_code})")
+        except Exception as e:
+            logger.warning(f"Could not load robots.txt from {robots_url}: {e}")
+            self.robot_parser = None
+
+    def _is_allowed_by_robots(self, url: str) -> bool:
+        """Check if a URL is allowed by robots.txt rules."""
+        if self.ignore_robots or self.robot_parser is None:
+            return True
+        return self.robot_parser.can_fetch(self.USER_AGENT, url)
+
     def crawl(self, collect_external: bool = False, recursive: bool = False,
               pages_only: bool = False, max_pages: int = 1000, max_depth: int = 10) -> None:
         """
@@ -155,6 +183,7 @@ class WebsiteCrawler:
         self.pages_only = pages_only
         self.max_pages = max_pages
         self.max_depth = max_depth
+        self._load_robots_txt()
         logger.info(f"Starting crawl of {self.base_url}")
         logger.info(f"Mode: {'Recursive' if recursive else 'Single-level'} crawl, "
                    f"{'collecting' if collect_external else 'ignoring'} external links, "
@@ -176,6 +205,11 @@ class WebsiteCrawler:
         try:
             clean_url, is_internal = self.process_url(url)
             if not is_internal or clean_url in self.visited_urls:
+                return
+
+            # Check robots.txt rules
+            if not self._is_allowed_by_robots(clean_url):
+                logger.debug(f"Blocked by robots.txt: {clean_url}")
                 return
 
             # Skip non-page URLs if pages_only is True

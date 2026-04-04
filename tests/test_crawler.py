@@ -714,3 +714,62 @@ def test_csv_sanitization_in_output(tmp_path):
     with open(output_file, 'r') as f:
         content = f.read()
         assert "'=HYPERLINK('evil')" in content
+
+
+@responses.activate
+def test_robots_txt_blocks_disallowed_paths():
+    """Test that robots.txt disallowed paths are skipped."""
+    crawler = WebsiteCrawler("example.com")
+
+    # Mock robots.txt
+    responses.add(responses.GET, 'https://example.com/robots.txt',
+        body="User-agent: *\nDisallow: /secret/\n", status=200)
+
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>Home</title></head><body>'
+             '<a href="https://example.com/public">Public</a>'
+             '<a href="https://example.com/secret/page">Secret</a>'
+             '</body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/public',
+        body='<html><head><title>Public</title></head></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/secret/page',
+        body='<html><head><title>Secret</title></head></html>', status=200)
+
+    crawler.crawl(recursive=True)
+
+    assert 'https://example.com' in crawler.visited_urls
+    assert 'https://example.com/public' in crawler.visited_urls
+    assert 'https://example.com/secret/page' not in crawler.visited_urls
+
+
+@responses.activate
+def test_ignore_robots_flag():
+    """Test that --ignore-robots bypasses robots.txt checking."""
+    crawler = WebsiteCrawler("example.com", ignore_robots=True)
+
+    # No robots.txt mock needed — it should not be fetched
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>Home</title></head><body>'
+             '<a href="https://example.com/secret/page">Secret</a>'
+             '</body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/secret/page',
+        body='<html><head><title>Secret</title></head></html>', status=200)
+
+    crawler.crawl(recursive=True)
+
+    assert 'https://example.com' in crawler.visited_urls
+    assert 'https://example.com/secret/page' in crawler.visited_urls
+
+
+@responses.activate
+def test_robots_txt_missing_gracefully():
+    """Test that a missing robots.txt doesn't block crawling."""
+    crawler = WebsiteCrawler("example.com")
+
+    responses.add(responses.GET, 'https://example.com/robots.txt', status=404)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>Home</title></head></html>', status=200)
+
+    crawler.crawl()
+
+    assert 'https://example.com' in crawler.visited_urls

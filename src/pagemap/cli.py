@@ -76,6 +76,11 @@ def main():
         action="store_true",
         help="Allow crawling domains that resolve to private/reserved IPs"
     )
+    parser.add_argument(
+        "--ignore-robots",
+        action="store_true",
+        help="Ignore robots.txt rules when crawling"
+    )
 
     args = parser.parse_args()
     setup_logging(args.verbose)
@@ -83,7 +88,8 @@ def main():
     try:
         safe_domain = args.domain.replace('/', '_').replace('\\', '_').replace('..', '_')
         crawler = WebsiteCrawler(args.domain, timeout=args.timeout,
-                                  allow_private=args.allow_private)
+                                  allow_private=args.allow_private,
+                                  ignore_robots=args.ignore_robots)
         timestamp = datetime.now().strftime("%Y-%m-%dT%H%M")
 
         if args.external_links:

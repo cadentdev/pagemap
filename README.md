@@ -2,15 +2,6 @@
 
 Crawl a website and create a structured map of its pages.
 
-## Features
-
-- Recursive site crawling with configurable depth
-- Output to CSV, JSON, and other formats
-- External link detection
-- Broken link checking
-- Image inventory with alt text auditing
-- Missing meta tag detection
-
 ## Installation
 
 ```bash
@@ -20,21 +11,61 @@ pipx install pagemap
 ## Usage
 
 ```bash
-# Map all pages on a site
-pagemap https://www.example.com
+# Map all pages on a site (single-level crawl)
+pagemap example.com
 
-# Recursive crawl with JSON output
-pagemap https://www.example.com --recursive --format json
+# Recursive crawl of all internal pages
+pagemap example.com -r
 
-# Check for broken links
-pagemap https://www.example.com --check-links
+# Collect external links
+pagemap example.com -e
 
-# Inventory images and check alt text
-pagemap https://www.example.com --images --check-alt
+# Recursive crawl with external link collection
+pagemap example.com -r -e
 
-# Map external links
-pagemap https://www.example.com --external
+# Only crawl web pages (skip images, PDFs, etc.)
+pagemap example.com -r -p
+
+# Verbose output for debugging
+pagemap example.com -r -v
 ```
+
+## Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-r`, `--recursive` | Recursively crawl internal links | Off |
+| `-e`, `--external-links` | Collect external links | Off |
+| `-p`, `--pages` | Only crawl web pages (HTML, PHP, etc.) | Off |
+| `-v`, `--verbose` | Enable verbose/debug output | Off |
+| `-t`, `--timeout` | Request timeout in seconds | 30 |
+| `--max-pages` | Maximum number of pages to crawl | 1000 |
+| `--max-depth` | Maximum crawl depth for recursive mode | 10 |
+| `--allow-private` | Allow crawling domains that resolve to private IPs | Off |
+| `--ignore-robots` | Ignore robots.txt rules | Off |
+
+## Output
+
+Results are saved to a CSV file named `{domain}_{timestamp}.csv` with columns:
+
+- **URL** — the page URL
+- **Title** — the page's `<title>` tag content
+- **Status Code** — HTTP response status
+
+When using `-e`, external links are saved to a separate `{domain}_{timestamp}_external_links.csv`.
+
+## Security
+
+- **SSRF protection**: Domains that resolve to private/reserved IP addresses are blocked by default. Use `--allow-private` to override for legitimate internal use.
+- **robots.txt**: Respected by default. Use `--ignore-robots` to override.
+- **CSV injection**: Output values are sanitized to prevent spreadsheet formula injection.
+- **Crawl limits**: Recursive crawls are bounded by `--max-pages` and `--max-depth` to prevent resource exhaustion.
+
+## Roadmap
+
+- `--format json` — JSON output format
+- `--check-links` — broken link detection
+- `--images --check-alt` — image inventory with alt text auditing
 
 ## License
 

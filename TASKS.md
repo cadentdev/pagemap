@@ -99,7 +99,7 @@ The `save_results()` method (line 185) correctly uses `encoding='utf-8'`, but `s
 
 ## P3 — Low Priority
 
-### [ ] Add robots.txt compliance (or document omission)
+### [x] Add robots.txt compliance (or document omission)
 
 **File:** `src/pagemap/crawler.py` — `crawl()` and `_crawl_page()` methods.
 
@@ -112,7 +112,7 @@ There is no robots.txt fetching or checking. The crawler will visit paths explic
 
 ---
 
-### [ ] Fix README to match actual implemented features
+### [x] Fix README to match actual implemented features
 
 **File:** `README.md`
 
