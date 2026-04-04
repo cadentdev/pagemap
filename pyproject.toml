@@ -1,14 +1,14 @@
 [tool.poetry]
-name = "pagemap"
-version = "0.1.1"
+name = "sitewalker"
+version = "0.2.0"
 description = "Crawl a website and create a structured map of its pages"
 authors = ["Neil Johnson <neil@cadent.net>"]
 readme = "README.md"
 license = "MIT"
-packages = [{include = "pagemap", from = "src"}]
+packages = [{include = "sitewalker", from = "src"}]
 
 [tool.poetry.scripts]
-pagemap = "pagemap.cli:main"
+sitewalker = "sitewalker.cli:main"
 
 [tool.poetry.dependencies]
 python = "^3.9"

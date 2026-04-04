@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 import requests
-from pagemap.crawler import WebsiteCrawler
+from sitewalker.crawler import WebsiteCrawler
 
 
 def setup_logging(verbose: bool):
@@ -101,7 +101,7 @@ def main():
                 logging.error(
                     f"Could not connect to {probe_url}\n"
                     f"If this site uses HTTP, provide the full URL:\n"
-                    f"  pagemap http://{target}"
+                    f"  sitewalker http://{target}"
                 )
                 sys.exit(1)
 

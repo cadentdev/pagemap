@@ -1,39 +1,39 @@
-# pagemap
+# sitewalker
 
 Crawl a website and create a structured map of its pages.
 
 ## Installation
 
 ```bash
-pipx install pagemap
+pipx install sitewalker
 ```
 
 ## Usage
 
 ```bash
 # Map all pages on a site (single-level crawl)
-pagemap example.com
+sitewalker example.com
 
 # Recursive crawl of all internal pages
-pagemap example.com -r
+sitewalker example.com -r
 
 # Collect external links
-pagemap example.com -e
+sitewalker example.com -e
 
 # Recursive crawl with external link collection
-pagemap example.com -r -e
+sitewalker example.com -r -e
 
 # Only crawl web pages (skip images, PDFs, etc.)
-pagemap example.com -r -p
+sitewalker example.com -r -p
 
 # Crawl an HTTP-only site (e.g., LAN staging server)
-pagemap http://staging.lan --allow-private
+sitewalker http://staging.lan --allow-private
 
 # Verbose output for debugging
-pagemap example.com -r -v
+sitewalker example.com -r -v
 ```
 
-The target accepts a bare domain (`example.com`) or a full URL (`http://example.com`). Bare domains default to HTTPS — if the connection fails, pagemap exits with a message to provide the full URL.
+The target accepts a bare domain (`example.com`) or a full URL (`http://example.com`). Bare domains default to HTTPS — if the connection fails, sitewalker exits with a message to provide the full URL.
 
 ## Options
 

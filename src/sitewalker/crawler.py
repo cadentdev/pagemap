@@ -63,7 +63,7 @@ def validate_domain_ssrf(domain: str) -> None:
         raise CrawlingError(f"Cannot resolve domain '{domain}': {e}")
 
 class WebsiteCrawler:
-    USER_AGENT = 'Mozilla/5.0 (compatible; pagemap/0.1.1; +https://github.com/cadentdev/pagemap)'
+    USER_AGENT = 'Mozilla/5.0 (compatible; sitewalker/0.2.0; +https://github.com/cadentdev/sitewalker)'
 
     def __init__(self, target: str, timeout: int = 30, allow_private: bool = False,
                  ignore_robots: bool = False):

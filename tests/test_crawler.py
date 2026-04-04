@@ -1,5 +1,5 @@
 import pytest
-from pagemap.crawler import (
+from sitewalker.crawler import (
     WebsiteCrawler, URLProcessingError, SSRFProtectionError,
     validate_domain_ssrf
 )
@@ -606,7 +606,7 @@ def test_is_page_exception(crawler_instance, caplog):
     malformed_url = "http://[::1]:80"
     caplog.set_level(logging.DEBUG)
 
-    with patch('pagemap.crawler.urlparse',
+    with patch('sitewalker.crawler.urlparse',
                side_effect=ValueError("Mock parsing error")):
         assert not crawler_instance.is_page(malformed_url)
 
@@ -633,7 +633,7 @@ def test_ssrf_blocks_localhost():
 
 def test_ssrf_blocks_private_ip():
     """Test that SSRF protection blocks private IPs."""
-    with patch('pagemap.crawler.socket.getaddrinfo',
+    with patch('sitewalker.crawler.socket.getaddrinfo',
                return_value=[(2, 1, 6, '', ('192.168.1.1', 0))]):
         with pytest.raises(SSRFProtectionError, match="private/reserved IP"):
             WebsiteCrawler("evil.example.com")
