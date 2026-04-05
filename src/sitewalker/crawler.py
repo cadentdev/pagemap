@@ -85,6 +85,7 @@ class WebsiteCrawler:
         self.visited_urls: Set[str] = set()
         self.results: List[Tuple[str, str, int]] = []
         self.external_links: Set[str] = set()
+        self.depth_limited_urls: Set[str] = set()
         self.pages_only: bool = False
         self.timeout = timeout
         self.ignore_robots = ignore_robots
@@ -200,6 +201,18 @@ class WebsiteCrawler:
                    f"max_pages={max_pages}, max_depth={max_depth}")
         self._crawl_page(self.base_url, collect_external, recursive, depth=0)
         logger.info(f"Crawl complete. Visited {len(self.visited_urls)} pages")
+        if self.depth_limited_urls:
+            skipped = self.depth_limited_urls - self.visited_urls
+            if skipped:
+                logger.warning(
+                    f"WARNING: {len(skipped)} URLs were skipped due to max_depth={self.max_depth}. "
+                    f"These pages were discovered but never crawled. "
+                    f"Increase --max-depth to include them."
+                )
+                for url in sorted(skipped)[:10]:
+                    logger.warning(f"  Skipped: {url}")
+                if len(skipped) > 10:
+                    logger.warning(f"  ... and {len(skipped) - 10} more")
         if collect_external:
             logger.info(f"Found {len(self.external_links)} unique external links")
 
@@ -210,6 +223,7 @@ class WebsiteCrawler:
             return
         if depth > self.max_depth:
             logger.debug(f"Reached max_depth limit ({self.max_depth}) at {url}")
+            self.depth_limited_urls.add(url)
             return
         try:
             clean_url, is_internal = self.process_url(url)

@@ -691,6 +691,30 @@ def test_max_depth_limit():
     assert 'https://example.com/d2' not in crawler.visited_urls
 
 
+@responses.activate
+def test_max_depth_warning(caplog):
+    """Test that a warning is logged when URLs are skipped due to max_depth."""
+    crawler = WebsiteCrawler("example.com")
+
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>D0</title></head><body>'
+             '<a href="https://example.com/d1">D1</a></body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/d1',
+        body='<html><head><title>D1</title></head><body>'
+             '<a href="https://example.com/d2">D2</a></body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/d2',
+        body='<html><head><title>D2</title></head><body></body></html>', status=200)
+
+    import logging
+    with caplog.at_level(logging.WARNING):
+        crawler.crawl(recursive=True, max_depth=1)
+
+    assert 'https://example.com/d2' not in crawler.visited_urls
+    assert 'https://example.com/d2' in crawler.depth_limited_urls
+    assert any("1 URLs were skipped due to max_depth=1" in msg for msg in caplog.messages)
+    assert any("Skipped: https://example.com/d2" in msg for msg in caplog.messages)
+
+
 def test_csv_sanitization():
     """Test that CSV injection characters are sanitized."""
     crawler = WebsiteCrawler("example.com")
