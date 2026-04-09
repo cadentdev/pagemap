@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "sitewalker"
-version = "0.2.1"
+version = "0.3.0"
 description = "Crawl a website and create a structured map of its pages"
 authors = ["Neil Johnson <neil@cadent.net>"]
 readme = "README.md"
