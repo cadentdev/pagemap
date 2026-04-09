@@ -64,7 +64,8 @@ def validate_domain_ssrf(domain: str) -> None:
         raise CrawlingError(f"Cannot resolve domain '{domain}': {e}")
 
 class WebsiteCrawler:
-    USER_AGENT = 'Mozilla/5.0 (compatible; sitewalker/0.2.0; +https://github.com/cadentdev/sitewalker)'
+    from sitewalker import __version__ as _pkg_version
+    USER_AGENT = f'Mozilla/5.0 (compatible; sitewalker/{_pkg_version}; +https://github.com/cadentdev/sitewalker)'
 
     def __init__(self, target: str, timeout: int = 30, allow_private: bool = False,
                  ignore_robots: bool = False):
@@ -275,7 +276,7 @@ class WebsiteCrawler:
             soup = BeautifulSoup(response.text, 'html.parser')
 
             # Process page title
-            title = soup.title.string.strip() if soup.title else "No title"
+            title = soup.title.string.strip() if soup.title and soup.title.string else "No title"
             self.results.append((clean_url, title, response.status_code))
 
             # Process links

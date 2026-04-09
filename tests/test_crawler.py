@@ -260,6 +260,24 @@ def test_crawl_page_with_invalid_html():
     assert crawler.results[0][1] == "No title"
 
 
+@responses.activate
+def test_crawl_page_with_empty_title():
+    """Test crawling a page with an empty <title></title> tag doesn't crash."""
+    crawler = WebsiteCrawler("example.com")
+
+    responses.add(
+        responses.GET,
+        'https://example.com',
+        body="<html><head><title></title></head><body>Content</body></html>",
+        status=200
+    )
+
+    crawler.crawl()
+
+    assert len(crawler.results) == 1
+    assert crawler.results[0][1] == "No title"
+
+
 def test_save_results():
     """Test saving results to a CSV file"""
     crawler = WebsiteCrawler("example.com")
