@@ -86,6 +86,7 @@ class WebsiteCrawler:
         self.visited_urls: Set[str] = set()
         self.results: List[Tuple[str, str, int]] = []
         self.external_links: Set[str] = set()
+        self.external_links_checked: List[Tuple[str, int]] = []
         self.depth_limited_urls: Set[str] = set()
         self.pages_only: bool = False
         self.timeout = timeout
@@ -178,8 +179,9 @@ class WebsiteCrawler:
             return True
         return self.robot_parser.can_fetch(self.USER_AGENT, url)
 
-    def crawl(self, collect_external: bool = False, recursive: bool = False,
-              pages_only: bool = False, max_pages: int = 1000, max_depth: int = 10) -> None:
+    def crawl(self, collect_external: bool = False, check_external: bool = False,
+              recursive: bool = False, pages_only: bool = False,
+              max_pages: int = 1000, max_depth: int = 10) -> None:
         """
         Crawl the website starting from the base URL using BFS.
 
@@ -244,6 +246,8 @@ class WebsiteCrawler:
                     logger.warning(f"  ... and {len(skipped) - 10} more")
         if collect_external:
             logger.info(f"Found {len(self.external_links)} unique external links")
+            if check_external:
+                self._check_external_links()
 
     def _process_page(self, url: str, collect_external: bool, depth: int) -> List[str]:
         """Fetch a single page and return discovered internal URLs."""
@@ -299,6 +303,27 @@ class WebsiteCrawler:
         time.sleep(1)  # Be polite
         return discovered
 
+    def _check_external_links(self) -> None:
+        """Check HTTP status of each external link via HEAD request."""
+        logger.info(f"Checking {len(self.external_links)} external links...")
+        for url in sorted(self.external_links):
+            try:
+                resp = self.session.head(url, timeout=10, allow_redirects=True)
+                status = resp.status_code
+                # Some servers reject HEAD — retry with GET
+                if status == 405:
+                    resp = self.session.get(url, timeout=10, allow_redirects=True)
+                    status = resp.status_code
+                logger.debug(f"External {url}: {status}")
+            except Exception as e:
+                logger.debug(f"External {url}: failed ({e})")
+                status = 0
+            self.external_links_checked.append((url, status))
+            time.sleep(1)  # Be polite
+        logger.info(f"External link check complete. "
+                   f"{sum(1 for _, s in self.external_links_checked if s == 200)} OK, "
+                   f"{sum(1 for _, s in self.external_links_checked if s != 200)} issues")
+
     @staticmethod
     def _sanitize_csv_value(value: str) -> str:
         """Sanitize a value for safe CSV output.
@@ -324,10 +349,18 @@ class WebsiteCrawler:
         logger.info(f"Results saved to {output_file}")
 
     def save_external_links_results(self, filename: str) -> None:
-        """Save external links to a CSV file."""
+        """Save external links to a CSV file.
+
+        If external links were checked (check_external=True), includes status codes.
+        """
         with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile, lineterminator='\n')
-            writer.writerow(['External URL'])
-            for url in sorted(self.external_links):
-                writer.writerow([self._sanitize_csv_value(url)])
+            if self.external_links_checked:
+                writer.writerow(['External URL', 'Status Code'])
+                for url, status in sorted(self.external_links_checked):
+                    writer.writerow([self._sanitize_csv_value(url), status])
+            else:
+                writer.writerow(['External URL'])
+                for url in sorted(self.external_links):
+                    writer.writerow([self._sanitize_csv_value(url)])
         logger.info(f"External links saved to {filename}")

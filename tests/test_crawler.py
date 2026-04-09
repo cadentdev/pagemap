@@ -869,3 +869,62 @@ def test_robots_txt_missing_gracefully():
     crawler.crawl()
 
     assert 'https://example.com' in crawler.visited_urls
+
+
+@responses.activate
+def test_check_external_links_status():
+    """Test that check_external checks HTTP status of external links."""
+    crawler = WebsiteCrawler("example.com")
+
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>Home</title></head><body>'
+             '<a href="https://good.com">Good</a>'
+             '<a href="https://broken.com">Broken</a>'
+             '</body></html>', status=200)
+    responses.add(responses.HEAD, 'https://good.com', status=200)
+    responses.add(responses.HEAD, 'https://broken.com', status=404)
+
+    crawler.crawl(collect_external=True, check_external=True)
+
+    # external_links_checked should have status codes
+    checked = {url: status for url, status in crawler.external_links_checked}
+    assert checked['https://good.com'] == 200
+    assert checked['https://broken.com'] == 404
+
+
+@responses.activate
+def test_check_external_timeout():
+    """Test that external link check handles timeouts gracefully."""
+    crawler = WebsiteCrawler("example.com")
+
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>Home</title></head><body>'
+             '<a href="https://slow.com">Slow</a>'
+             '</body></html>', status=200)
+    responses.add(responses.HEAD, 'https://slow.com',
+        body=requests.ConnectionError("timeout"))
+
+    crawler.crawl(collect_external=True, check_external=True)
+
+    checked = {url: status for url, status in crawler.external_links_checked}
+    assert checked['https://slow.com'] == 0
+
+
+def test_save_external_links_with_status(tmp_path):
+    """Test that external links CSV includes status code when checked."""
+    crawler = WebsiteCrawler("example.com")
+    crawler.external_links_checked = [
+        ("https://good.com", 200),
+        ("https://broken.com", 404),
+    ]
+
+    output_file = tmp_path / "external.csv"
+    crawler.save_external_links_results(str(output_file))
+
+    with open(output_file, 'r', newline='', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    assert rows[0] == ["External URL", "Status Code"]
+    assert rows[1] == ["https://broken.com", "404"]
+    assert rows[2] == ["https://good.com", "200"]

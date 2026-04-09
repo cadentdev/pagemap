@@ -38,7 +38,12 @@ def main():
     parser.add_argument(
         "-e", "--external-links",
         action="store_true",
-        help="Check for external links on the domain"
+        help="Collect external links found on the domain"
+    )
+    parser.add_argument(
+        "--check-external",
+        action="store_true",
+        help="Check HTTP status of each external link (requires -e)"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -116,6 +121,7 @@ def main():
 
         crawler.crawl(
             collect_external=args.external_links,
+            check_external=args.check_external,
             recursive=args.recursive,
             pages_only=args.pages,
             max_pages=args.max_pages,
