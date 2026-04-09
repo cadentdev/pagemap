@@ -67,8 +67,8 @@ class WebsiteCrawler:
     from sitewalker import __version__ as _pkg_version
     USER_AGENT = f'Mozilla/5.0 (compatible; sitewalker/{_pkg_version}; +https://github.com/cadentdev/sitewalker)'
 
-    def __init__(self, target: str, timeout: int = 30, allow_private: bool = False,
-                 ignore_robots: bool = False):
+    def __init__(self, target: str, timeout: int = 30, delay: float = 1.0,
+                 allow_private: bool = False, ignore_robots: bool = False):
         # Parse target: accept full URL (http://example.com) or bare domain (example.com)
         parsed = urlparse(target)
         if parsed.scheme in ('http', 'https'):
@@ -91,6 +91,7 @@ class WebsiteCrawler:
         self.depth_limited_urls: Set[str] = set()
         self.pages_only: bool = False
         self.timeout = timeout
+        self.delay = delay
         self.ignore_robots = ignore_robots
         self.robot_parser: RobotFileParser | None = None
         self.session = requests.Session()
@@ -301,7 +302,8 @@ class WebsiteCrawler:
             logger.error(f"Error crawling {url}: {str(e)}")
             self.results.append((url, "Error", 0))
 
-        time.sleep(1)  # Be polite
+        if self.delay > 0:
+            time.sleep(self.delay)
         return discovered
 
     def _check_external_links(self) -> None:
@@ -320,7 +322,8 @@ class WebsiteCrawler:
                 logger.debug(f"External {url}: failed ({e})")
                 status = 0
             self.external_links_checked.append((url, status))
-            time.sleep(1)  # Be polite
+            if self.delay > 0:
+                time.sleep(self.delay)
         logger.info(f"External link check complete. "
                    f"{sum(1 for _, s in self.external_links_checked if s == 200)} OK, "
                    f"{sum(1 for _, s in self.external_links_checked if s != 200)} issues")

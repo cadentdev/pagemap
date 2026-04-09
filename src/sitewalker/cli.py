@@ -79,6 +79,12 @@ def main():
         help="Maximum crawl depth for recursive mode (default: 10)"
     )
     parser.add_argument(
+        "--delay",
+        type=float,
+        default=1.0,
+        help="Delay between requests in seconds (default: 1.0, use 0 for local servers)"
+    )
+    parser.add_argument(
         "--allow-private",
         action="store_true",
         help="Allow crawling domains that resolve to private/reserved IPs"
@@ -114,7 +120,7 @@ def main():
         parsed = urlparse(target)
         safe_domain = parsed.netloc.replace('/', '_').replace('\\', '_').replace('..', '_')
 
-        crawler = WebsiteCrawler(target, timeout=args.timeout,
+        crawler = WebsiteCrawler(target, timeout=args.timeout, delay=args.delay,
                                   allow_private=args.allow_private,
                                   ignore_robots=args.ignore_robots)
         timestamp = datetime.now().strftime("%Y-%m-%dT%H%M")
