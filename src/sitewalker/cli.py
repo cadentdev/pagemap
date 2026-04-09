@@ -38,7 +38,12 @@ def main():
     parser.add_argument(
         "-e", "--external-links",
         action="store_true",
-        help="Check for external links on the domain"
+        help="Collect external links found on the domain"
+    )
+    parser.add_argument(
+        "--check-external",
+        action="store_true",
+        help="Check HTTP status of each external link (requires -e)"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -114,24 +119,25 @@ def main():
                                   ignore_robots=args.ignore_robots)
         timestamp = datetime.now().strftime("%Y-%m-%dT%H%M")
 
+        crawler.crawl(
+            collect_external=args.external_links,
+            check_external=args.check_external,
+            recursive=args.recursive,
+            pages_only=args.pages,
+            max_pages=args.max_pages,
+            max_depth=args.max_depth
+        )
+
+        # Always save internal pages CSV
+        output_file = f"{safe_domain}_{timestamp}.csv"
+        crawler.save_results(output_file)
+        logging.info(f"Crawling complete! Results saved to {output_file}")
+
+        # Additionally save external links CSV when -e is set
         if args.external_links:
-            crawler.crawl(
-                collect_external=True,
-                recursive=args.recursive,
-                pages_only=args.pages,
-                max_pages=args.max_pages,
-                max_depth=args.max_depth
-            )
-            ext_links_root = "_external_links.csv"
-            external_links_file = f"{safe_domain}_{timestamp}{ext_links_root}"
+            external_links_file = f"{safe_domain}_{timestamp}_external_links.csv"
             crawler.save_external_links_results(external_links_file)
             logging.info(f"External links saved to {external_links_file}")
-        else:
-            crawler.crawl(recursive=args.recursive, pages_only=args.pages,
-                         max_pages=args.max_pages, max_depth=args.max_depth)
-            output_file = f"{safe_domain}_{timestamp}.csv"
-            crawler.save_results(output_file)
-            logging.info(f"Crawling complete! Results saved to {output_file}")
 
         logging.info(f"Total pages crawled: {len(crawler.visited_urls)}")
 

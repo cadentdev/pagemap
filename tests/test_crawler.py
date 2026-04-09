@@ -260,6 +260,24 @@ def test_crawl_page_with_invalid_html():
     assert crawler.results[0][1] == "No title"
 
 
+@responses.activate
+def test_crawl_page_with_empty_title():
+    """Test crawling a page with an empty <title></title> tag doesn't crash."""
+    crawler = WebsiteCrawler("example.com")
+
+    responses.add(
+        responses.GET,
+        'https://example.com',
+        body="<html><head><title></title></head><body>Content</body></html>",
+        status=200
+    )
+
+    crawler.crawl()
+
+    assert len(crawler.results) == 1
+    assert crawler.results[0][1] == "No title"
+
+
 def test_save_results():
     """Test saving results to a CSV file"""
     crawler = WebsiteCrawler("example.com")
@@ -652,6 +670,53 @@ def test_timeout_passed_to_requests():
 
 
 @responses.activate
+def test_bfs_finds_children_at_correct_depth():
+    """Test that BFS explores children at the shortest path depth.
+
+    This is the core bug from issue #1: DFS visits /services via a deep path
+    (Home→About→Contact→Services at depth 3), so /services/pricing is explored
+    at depth 4 and blocked by max_depth=3. BFS visits /services at depth 1
+    (directly from Home), so /services/pricing is explored at depth 2.
+
+    Site structure:
+      Home → About, Services
+      About → Contact
+      Contact → Services (cross-link)
+      Services → Services/Pricing
+    """
+    crawler = WebsiteCrawler("example.com")
+
+    responses.add(responses.GET, 'https://example.com/robots.txt', status=404)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>Home</title></head><body>'
+             '<a href="https://example.com/about">About</a>'
+             '<a href="https://example.com/services">Services</a>'
+             '</body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/about',
+        body='<html><head><title>About</title></head><body>'
+             '<a href="https://example.com/contact">Contact</a>'
+             '</body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/contact',
+        body='<html><head><title>Contact</title></head><body>'
+             '<a href="https://example.com/services">Services</a>'
+             '</body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/services',
+        body='<html><head><title>Services</title></head><body>'
+             '<a href="https://example.com/services/pricing">Pricing</a>'
+             '</body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/services/pricing',
+        body='<html><head><title>Pricing</title></head><body></body></html>',
+        status=200)
+
+    crawler.crawl(recursive=True, max_depth=3)
+
+    # BFS: Home(0) → About(1), Services(1) → Contact(2), Pricing(2) → all within depth 3
+    # DFS: Home(0) → About(1) → Contact(2) → Services(3) → Pricing(4, BLOCKED!)
+    assert 'https://example.com/services/pricing' in crawler.visited_urls, \
+        "Pricing should be at BFS depth 2 (Home→Services→Pricing), not DFS depth 4"
+
+
+@responses.activate
 def test_max_pages_limit():
     """Test that crawling stops at max_pages limit."""
     crawler = WebsiteCrawler("example.com")
@@ -785,6 +850,31 @@ def test_ignore_robots_flag():
     assert 'https://example.com/secret/page' in crawler.visited_urls
 
 
+def test_save_results_unix_line_endings(tmp_path):
+    """Test that saved CSV uses Unix line endings (no \\r)."""
+    crawler = WebsiteCrawler("example.com")
+    crawler.results = [
+        ("https://example.com", "Home Page", 200),
+        ("https://example.com/about", "About Us", 200),
+    ]
+    output_file = tmp_path / "results.csv"
+    crawler.save_results(str(output_file))
+
+    raw = output_file.read_bytes()
+    assert b'\r' not in raw, f"Found \\r in CSV output: {raw[:200]}"
+
+
+def test_save_external_links_unix_line_endings(tmp_path):
+    """Test that saved external links CSV uses Unix line endings (no \\r)."""
+    crawler = WebsiteCrawler("example.com")
+    crawler.external_links = {"https://external1.com", "https://external2.com"}
+    output_file = tmp_path / "external.csv"
+    crawler.save_external_links_results(str(output_file))
+
+    raw = output_file.read_bytes()
+    assert b'\r' not in raw, f"Found \\r in CSV output: {raw[:200]}"
+
+
 @responses.activate
 def test_robots_txt_missing_gracefully():
     """Test that a missing robots.txt doesn't block crawling."""
@@ -797,3 +887,62 @@ def test_robots_txt_missing_gracefully():
     crawler.crawl()
 
     assert 'https://example.com' in crawler.visited_urls
+
+
+@responses.activate
+def test_check_external_links_status():
+    """Test that check_external checks HTTP status of external links."""
+    crawler = WebsiteCrawler("example.com")
+
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>Home</title></head><body>'
+             '<a href="https://good.com">Good</a>'
+             '<a href="https://broken.com">Broken</a>'
+             '</body></html>', status=200)
+    responses.add(responses.HEAD, 'https://good.com', status=200)
+    responses.add(responses.HEAD, 'https://broken.com', status=404)
+
+    crawler.crawl(collect_external=True, check_external=True)
+
+    # external_links_checked should have status codes
+    checked = {url: status for url, status in crawler.external_links_checked}
+    assert checked['https://good.com'] == 200
+    assert checked['https://broken.com'] == 404
+
+
+@responses.activate
+def test_check_external_timeout():
+    """Test that external link check handles timeouts gracefully."""
+    crawler = WebsiteCrawler("example.com")
+
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>Home</title></head><body>'
+             '<a href="https://slow.com">Slow</a>'
+             '</body></html>', status=200)
+    responses.add(responses.HEAD, 'https://slow.com',
+        body=requests.ConnectionError("timeout"))
+
+    crawler.crawl(collect_external=True, check_external=True)
+
+    checked = {url: status for url, status in crawler.external_links_checked}
+    assert checked['https://slow.com'] == 0
+
+
+def test_save_external_links_with_status(tmp_path):
+    """Test that external links CSV includes status code when checked."""
+    crawler = WebsiteCrawler("example.com")
+    crawler.external_links_checked = [
+        ("https://good.com", 200),
+        ("https://broken.com", 404),
+    ]
+
+    output_file = tmp_path / "external.csv"
+    crawler.save_external_links_results(str(output_file))
+
+    with open(output_file, 'r', newline='', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    assert rows[0] == ["External URL", "Status Code"]
+    assert rows[1] == ["https://broken.com", "404"]
+    assert rows[2] == ["https://good.com", "200"]
