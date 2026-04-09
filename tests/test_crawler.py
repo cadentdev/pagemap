@@ -652,6 +652,53 @@ def test_timeout_passed_to_requests():
 
 
 @responses.activate
+def test_bfs_finds_children_at_correct_depth():
+    """Test that BFS explores children at the shortest path depth.
+
+    This is the core bug from issue #1: DFS visits /services via a deep path
+    (Home→About→Contact→Services at depth 3), so /services/pricing is explored
+    at depth 4 and blocked by max_depth=3. BFS visits /services at depth 1
+    (directly from Home), so /services/pricing is explored at depth 2.
+
+    Site structure:
+      Home → About, Services
+      About → Contact
+      Contact → Services (cross-link)
+      Services → Services/Pricing
+    """
+    crawler = WebsiteCrawler("example.com")
+
+    responses.add(responses.GET, 'https://example.com/robots.txt', status=404)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>Home</title></head><body>'
+             '<a href="https://example.com/about">About</a>'
+             '<a href="https://example.com/services">Services</a>'
+             '</body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/about',
+        body='<html><head><title>About</title></head><body>'
+             '<a href="https://example.com/contact">Contact</a>'
+             '</body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/contact',
+        body='<html><head><title>Contact</title></head><body>'
+             '<a href="https://example.com/services">Services</a>'
+             '</body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/services',
+        body='<html><head><title>Services</title></head><body>'
+             '<a href="https://example.com/services/pricing">Pricing</a>'
+             '</body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/services/pricing',
+        body='<html><head><title>Pricing</title></head><body></body></html>',
+        status=200)
+
+    crawler.crawl(recursive=True, max_depth=3)
+
+    # BFS: Home(0) → About(1), Services(1) → Contact(2), Pricing(2) → all within depth 3
+    # DFS: Home(0) → About(1) → Contact(2) → Services(3) → Pricing(4, BLOCKED!)
+    assert 'https://example.com/services/pricing' in crawler.visited_urls, \
+        "Pricing should be at BFS depth 2 (Home→Services→Pricing), not DFS depth 4"
+
+
+@responses.activate
 def test_max_pages_limit():
     """Test that crawling stops at max_pages limit."""
     crawler = WebsiteCrawler("example.com")

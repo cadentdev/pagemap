@@ -3,6 +3,7 @@
 import csv
 import ipaddress
 import socket
+from collections import deque
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
@@ -180,14 +181,17 @@ class WebsiteCrawler:
     def crawl(self, collect_external: bool = False, recursive: bool = False,
               pages_only: bool = False, max_pages: int = 1000, max_depth: int = 10) -> None:
         """
-        Crawl the website starting from the base URL.
+        Crawl the website starting from the base URL using BFS.
+
+        BFS ensures that depth = shortest link distance from the start URL,
+        so max_depth behaves predictably regardless of site structure.
 
         In non-recursive mode:
         - Crawls the base URL and follows internal links found on that page
         - Does not follow links found on subsequent pages
 
         In recursive mode:
-        - Crawls the base URL and follows all internal links recursively
+        - Crawls the base URL and follows all internal links using BFS
         - Continues until all reachable internal pages are visited
         """
         self.pages_only = pages_only
@@ -199,7 +203,32 @@ class WebsiteCrawler:
                    f"{'collecting' if collect_external else 'ignoring'} external links, "
                    f"{'pages only' if pages_only else 'all files'}, "
                    f"max_pages={max_pages}, max_depth={max_depth}")
-        self._crawl_page(self.base_url, collect_external, recursive, depth=0)
+
+        # BFS queue: (url, depth)
+        queue: deque[Tuple[str, int]] = deque()
+        queue.append((self.base_url, 0))
+        # Track URLs already queued to avoid duplicates in the queue
+        queued: Set[str] = {self.base_url}
+
+        while queue:
+            url, depth = queue.popleft()
+            if len(self.visited_urls) >= self.max_pages:
+                logger.info(f"Reached max_pages limit ({self.max_pages})")
+                break
+
+            discovered = self._process_page(url, collect_external, depth)
+
+            if recursive:
+                for next_url in discovered:
+                    if next_url in queued:
+                        continue
+                    next_depth = depth + 1
+                    if next_depth > self.max_depth:
+                        self.depth_limited_urls.add(next_url)
+                        continue
+                    queued.add(next_url)
+                    queue.append((next_url, next_depth))
+
         logger.info(f"Crawl complete. Visited {len(self.visited_urls)} pages")
         if self.depth_limited_urls:
             skipped = self.depth_limited_urls - self.visited_urls
@@ -216,29 +245,23 @@ class WebsiteCrawler:
         if collect_external:
             logger.info(f"Found {len(self.external_links)} unique external links")
 
-    def _crawl_page(self, url: str, collect_external: bool, recursive: bool, depth: int = 0) -> None:
-        """Internal method to crawl a single page and process its links."""
-        if len(self.visited_urls) >= self.max_pages:
-            logger.info(f"Reached max_pages limit ({self.max_pages})")
-            return
-        if depth > self.max_depth:
-            logger.debug(f"Reached max_depth limit ({self.max_depth}) at {url}")
-            self.depth_limited_urls.add(url)
-            return
+    def _process_page(self, url: str, collect_external: bool, depth: int) -> List[str]:
+        """Fetch a single page and return discovered internal URLs."""
+        discovered: List[str] = []
         try:
             clean_url, is_internal = self.process_url(url)
             if not is_internal or clean_url in self.visited_urls:
-                return
+                return discovered
 
             # Check robots.txt rules
             if not self._is_allowed_by_robots(clean_url):
                 logger.debug(f"Blocked by robots.txt: {clean_url}")
-                return
+                return discovered
 
             # Skip non-page URLs if pages_only is True
             if self.pages_only and not self.is_page(clean_url):
                 logger.debug(f"Skipping non-page URL: {clean_url}")
-                return
+                return discovered
 
             self.visited_urls.add(clean_url)
             logger.debug(f"Crawling {clean_url}")
@@ -257,10 +280,10 @@ class WebsiteCrawler:
                 try:
                     next_clean_url, next_is_internal = self.process_url(next_url)
 
-                    if next_is_internal and recursive:
+                    if next_is_internal:
                         if next_clean_url not in self.visited_urls:
-                            self._crawl_page(next_clean_url, collect_external, recursive, depth + 1)
-                    elif not next_is_internal and collect_external:
+                            discovered.append(next_clean_url)
+                    elif collect_external:
                         self.external_links.add(next_clean_url)
 
                 except URLProcessingError:
@@ -274,6 +297,7 @@ class WebsiteCrawler:
             self.results.append((url, "Error", 0))
 
         time.sleep(1)  # Be polite
+        return discovered
 
     @staticmethod
     def _sanitize_csv_value(value: str) -> str:
