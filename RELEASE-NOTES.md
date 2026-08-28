@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Breaking
+
+- **Minimum Python is now 3.11** (was 3.9). Python 3.9 reached end of life in October 2025 and 3.10 follows in October 2026. `pipx install sitewalker` will refuse to install on older interpreters. CI matrix is now 3.11 and 3.13. (#18)
+
 ## v0.3.1 (2026-04-09)
 
 ### Features
