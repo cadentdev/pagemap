@@ -1,6 +1,6 @@
-# pagemap — Security Audit Remediation Tasks
+# sitewalker — Security Audit Remediation Tasks
 
-From the Feature Release security audit conducted 2026-04-03.
+From the Feature Release security audit conducted 2026-04-03. (The project was still named `pagemap` at the time; references below use the current name.)
 
 ---
 
@@ -8,11 +8,11 @@ From the Feature Release security audit conducted 2026-04-03.
 
 ### [x] Fix broken import path in cli.py
 
-**File:** `src/pagemap/cli.py:7`
-**Current:** `from src.pagemap.crawler import WebsiteCrawler`
-**Fix:** `from pagemap.crawler import WebsiteCrawler`
+**File:** `src/sitewalker/cli.py:7`
+**Current:** `from src.sitewalker.crawler import WebsiteCrawler`
+**Fix:** `from sitewalker.crawler import WebsiteCrawler`
 
-The `src.` prefix works when running from the repo root during development, but fails when installed as a package via pip/pipx. The `packages = [{include = "pagemap", from = "src"}]` directive in pyproject.toml means the installed package is `pagemap`, not `src.pagemap`. Any user who installs this tool will get an ImportError on launch.
+The `src.` prefix works when running from the repo root during development, but fails when installed as a package via pip/pipx. The `packages = [{include = "sitewalker", from = "src"}]` directive in pyproject.toml means the installed package is `sitewalker`, not `src.sitewalker`. Any user who installs this tool will get an ImportError on launch.
 
 **Effort:** 1 line change.
 
@@ -22,7 +22,7 @@ The `src.` prefix works when running from the repo root during development, but 
 
 ### [x] Add request timeout to HTTP calls
 
-**File:** `src/pagemap/crawler.py:151`
+**File:** `src/sitewalker/crawler.py:151`
 **Current:** `response = self.session.get(clean_url)` — no timeout parameter.
 
 A hanging or slow-drip target server will block the crawler indefinitely. The `requests` library has no default timeout — it will wait forever.
@@ -35,7 +35,7 @@ A hanging or slow-drip target server will block the crawler indefinitely. The `r
 
 ### [x] Add crawl limits for recursive mode
 
-**File:** `src/pagemap/crawler.py` — `_crawl_page()` method, `crawl()` method.
+**File:** `src/sitewalker/crawler.py` — `_crawl_page()` method, `crawl()` method.
 
 Recursive crawl has no `max_depth` or `max_pages` limit. A site with 100K+ pages will exhaust memory from the growing `visited_urls` set and `results` list. The 1-second `time.sleep()` delay slows things down but doesn't prevent memory growth. This is especially dangerous on flicky (3.7GB RAM) where large crawls will trigger OOM kills.
 
@@ -47,7 +47,7 @@ Recursive crawl has no `max_depth` or `max_pages` limit. A site with 100K+ pages
 
 ### [x] Add SSRF protection for domain argument
 
-**File:** `src/pagemap/crawler.py:42` — `__init__()` constructs `https://{domain}` with no validation.
+**File:** `src/sitewalker/crawler.py:42` — `__init__()` constructs `https://{domain}` with no validation.
 
 An attacker or careless user could target internal services: `127.0.0.1`, `localhost`, `169.254.169.254` (cloud metadata endpoints), `10.x.x.x`, `192.168.x.x`, or internal hostnames. There is no IP blocklist, no DNS resolution check, and no private network guard.
 
@@ -61,9 +61,9 @@ An attacker or careless user could target internal services: `127.0.0.1`, `local
 
 ### [x] Sanitize CSV output against formula injection
 
-**File:** `src/pagemap/crawler.py:188` — `writer.writerows(self.results)`
+**File:** `src/sitewalker/crawler.py:188` — `writer.writerows(self.results)`
 
-Page titles are written directly to CSV with no sanitization. A malicious page title like `=cmd|'/C calc'!A0` or `+cmd|'/C calc'!A0` will execute as a formula when the CSV is opened in Excel or LibreOffice Calc. Since pagemap crawls untrusted websites, this is a realistic attack vector — the malicious payload is set by the target site, not the user.
+Page titles are written directly to CSV with no sanitization. A malicious page title like `=cmd|'/C calc'!A0` or `+cmd|'/C calc'!A0` will execute as a formula when the CSV is opened in Excel or LibreOffice Calc. Since sitewalker crawls untrusted websites, this is a realistic attack vector — the malicious payload is set by the target site, not the user.
 
 **Fix:** Prefix any cell value starting with `=`, `+`, `-`, `@`, `\t`, or `\r` with a single quote (`'`). Apply to both `save_results()` and `save_external_links_results()`.
 
@@ -73,7 +73,7 @@ Page titles are written directly to CSV with no sanitization. A malicious page t
 
 ### [x] Sanitize output filename against path traversal
 
-**File:** `src/pagemap/cli.py:71-72`
+**File:** `src/sitewalker/cli.py:71-72`
 **Current:** `output_file = f"{args.domain}_{timestamp}.csv"`
 
 The domain argument is used directly in the output filename. If domain is `../../etc/evil`, the file writes outside the intended directory. The URL processing in `__init__()` validates scheme/netloc, but the raw `args.domain` (not the processed URL) is used for filenames in cli.py.
@@ -86,7 +86,7 @@ The domain argument is used directly in the output filename. If domain is `../..
 
 ### [x] Add UTF-8 encoding to external links CSV writer
 
-**File:** `src/pagemap/crawler.py:193`
+**File:** `src/sitewalker/crawler.py:193`
 **Current:** `with open(filename, 'w', newline='') as csvfile:` — no encoding specified.
 
 The `save_results()` method (line 185) correctly uses `encoding='utf-8'`, but `save_external_links_results()` does not. On systems where the default encoding is not UTF-8 (e.g., older Windows), this causes data corruption for URLs containing non-ASCII characters.
@@ -101,7 +101,7 @@ The `save_results()` method (line 185) correctly uses `encoding='utf-8'`, but `s
 
 ### [x] Add robots.txt compliance (or document omission)
 
-**File:** `src/pagemap/crawler.py` — `crawl()` and `_crawl_page()` methods.
+**File:** `src/sitewalker/crawler.py` — `crawl()` and `_crawl_page()` methods.
 
 There is no robots.txt fetching or checking. The crawler will visit paths explicitly forbidden by the site owner's robots.txt directives. This is a legal/ethical concern and could result in the crawler being banned by target sites.
 
@@ -120,7 +120,7 @@ The README documents several features that are not yet implemented:
 - `--format json` — only CSV output exists
 - `--check-links` — not implemented
 - `--images --check-alt` — not implemented
-- Usage shows `pagemap https://www.example.com` — but CLI takes a bare domain (`example.com`), not a URL
+- Usage shows `sitewalker https://www.example.com` — but CLI takes a bare domain (`example.com`), not a URL
 
 This creates user confusion and sets false expectations. The README appears to have been written for planned features rather than current state.
 
@@ -134,7 +134,7 @@ This creates user confusion and sets false expectations. The README appears to h
 
 ### [x] Support HTTP-only sites (--http flag or auto-detect)
 
-**File:** `src/pagemap/crawler.py:73`
+**File:** `src/sitewalker/crawler.py:73`
 **Current:** `self.base_url = f"https://{domain}"` — hardcoded HTTPS.
 
 The crawler assumes all targets use HTTPS. HTTP-only sites (e.g., LAN staging servers like `bnhc-stage-15.lan`) time out on port 443 with no fallback. Discovered during live testing with `--allow-private`.
