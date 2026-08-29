@@ -946,3 +946,105 @@ def test_save_external_links_with_status(tmp_path):
     assert rows[0] == ["External URL", "Status Code"]
     assert rows[1] == ["https://broken.com", "404"]
     assert rows[2] == ["https://good.com", "200"]
+
+
+# --- Crawl limits (#6, #7, #8) ---
+
+@responses.activate
+def test_max_external_links_caps_checking(caplog):
+    """Only max_external_links URLs are checked; the rest are skipped with a warning (#6)."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body>'
+             '<a href="https://a.com">A</a>'
+             '<a href="https://b.com">B</a>'
+             '<a href="https://c.com">C</a>'
+             '</body></html>', status=200)
+    for d in ('a', 'b', 'c'):
+        responses.add(responses.HEAD, f'https://{d}.com', status=200)
+
+    with caplog.at_level(logging.WARNING):
+        crawler.crawl(collect_external=True, check_external=True, max_external_links=2)
+
+    assert len(crawler.external_links) == 3
+    assert len(crawler.external_links_checked) == 2
+    assert "checking only the first 2" in caplog.text
+
+
+def test_order_external_links_interleaves_domains():
+    """Same-domain links are spread apart round-robin (#7)."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    crawler.external_links = {
+        'https://a.com/1', 'https://a.com/2', 'https://a.com/3',
+        'https://b.com/1', 'https://c.com/1',
+    }
+    ordered = crawler._order_external_links()
+    assert ordered == [
+        'https://a.com/1', 'https://b.com/1', 'https://c.com/1',
+        'https://a.com/2', 'https://a.com/3',
+    ]
+
+
+@responses.activate
+def test_per_domain_rate_limit_sleeps_between_same_domain_requests():
+    """Consecutive requests to one domain wait domain_delay seconds (#7)."""
+    crawler = WebsiteCrawler("example.com", delay=0, domain_delay=5.0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body>'
+             '<a href="https://a.com/1">1</a>'
+             '<a href="https://a.com/2">2</a>'
+             '</body></html>', status=200)
+    responses.add(responses.HEAD, 'https://a.com/1', status=200)
+    responses.add(responses.HEAD, 'https://a.com/2', status=200)
+
+    clock = [100.0]
+    sleeps = []
+
+    def fake_sleep(secs):
+        sleeps.append(secs)
+        clock[0] += secs
+
+    with patch('sitewalker.crawler.time.monotonic', side_effect=lambda: clock[0]), \
+         patch('sitewalker.crawler.time.sleep', side_effect=fake_sleep):
+        crawler.crawl(collect_external=True, check_external=True)
+
+    assert len(crawler.external_links_checked) == 2
+    assert sleeps == [5.0]
+
+
+@responses.activate
+def test_per_domain_rate_limit_does_not_sleep_across_domains():
+    """Requests to different domains are not delayed by domain_delay (#7)."""
+    crawler = WebsiteCrawler("example.com", delay=0, domain_delay=5.0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body>'
+             '<a href="https://a.com">A</a>'
+             '<a href="https://b.com">B</a>'
+             '</body></html>', status=200)
+    responses.add(responses.HEAD, 'https://a.com', status=200)
+    responses.add(responses.HEAD, 'https://b.com', status=200)
+
+    with patch('sitewalker.crawler.time.sleep') as mock_sleep:
+        crawler.crawl(collect_external=True, check_external=True)
+
+    mock_sleep.assert_not_called()
+
+
+@responses.activate
+def test_queue_size_is_capped(caplog):
+    """The queued set stops growing at QUEUE_MULTIPLIER * max_pages (#8)."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    # Home page links to 20 pages; max_pages=2 → cap of 10 queued URLs
+    links = ''.join(f'<a href="/p{i}">{i}</a>' for i in range(20))
+    responses.add(responses.GET, 'https://example.com',
+        body=f'<html><body>{links}</body></html>', status=200)
+    for i in range(20):
+        responses.add(responses.GET, f'https://example.com/p{i}',
+            body='<html><body></body></html>', status=200)
+
+    with caplog.at_level(logging.WARNING):
+        crawler.crawl(recursive=True, max_pages=2)
+
+    assert "Queue limit reached (10 URLs" in caplog.text
+    # Only max_pages were actually visited
+    assert len(crawler.visited_urls) == 2

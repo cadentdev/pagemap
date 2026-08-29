@@ -85,6 +85,18 @@ def main():
         help="Delay between requests in seconds (default: 1.0, use 0 for local servers)"
     )
     parser.add_argument(
+        "--max-external-links",
+        type=int,
+        default=500,
+        help="Maximum number of external links to check with --check-external (default: 500)"
+    )
+    parser.add_argument(
+        "--domain-delay",
+        type=float,
+        default=5.0,
+        help="Minimum seconds between requests to the same external domain (default: 5.0)"
+    )
+    parser.add_argument(
         "--allow-private",
         action="store_true",
         help="Allow crawling domains that resolve to private/reserved IPs"
@@ -122,7 +134,8 @@ def main():
 
         crawler = WebsiteCrawler(target, timeout=args.timeout, delay=args.delay,
                                   allow_private=args.allow_private,
-                                  ignore_robots=args.ignore_robots)
+                                  ignore_robots=args.ignore_robots,
+                                  domain_delay=args.domain_delay)
         timestamp = datetime.now().strftime("%Y-%m-%dT%H%M")
 
         crawler.crawl(
@@ -131,7 +144,8 @@ def main():
             recursive=args.recursive,
             pages_only=args.pages,
             max_pages=args.max_pages,
-            max_depth=args.max_depth
+            max_depth=args.max_depth,
+            max_external_links=args.max_external_links
         )
 
         # Always save internal pages CSV
