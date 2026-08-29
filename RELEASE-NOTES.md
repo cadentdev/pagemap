@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Features
+
+- **`--max-external-links` flag** — Caps how many external links `--check-external` will probe (default 500). Previously a site with thousands of external links could take many hours to check. A warning reports how many were skipped. (#6)
+- **Per-domain rate limiting for external checks** — External links are checked round-robin across domains, and requests to the same domain are spaced by at least `--domain-delay` seconds (default 5.0), reducing the chance of triggering rate limits or IP blocks. (#7)
+
+### Fixes
+
+- **Bounded BFS queue** — The set of discovered-but-unvisited URLs is now capped at 5× `--max-pages`, preventing unbounded memory growth on sites with dense link graphs. A warning is logged when the cap is hit. (#8)
+
 ### Breaking
 
 - **Minimum Python is now 3.11** (was 3.9). Python 3.9 reached end of life in October 2025 and 3.10 follows in October 2026. `pipx install sitewalker` will refuse to install on older interpreters. CI matrix is now 3.11 and 3.13. (#18)

@@ -65,10 +65,13 @@ def validate_domain_ssrf(domain: str) -> None:
 
 class WebsiteCrawler:
     from sitewalker import __version__ as _pkg_version
+    # Cap on discovered URLs (queued set) as a multiple of max_pages (#8)
+    QUEUE_MULTIPLIER = 5
     USER_AGENT = f'Mozilla/5.0 (compatible; sitewalker/{_pkg_version}; +https://github.com/cadentdev/sitewalker)'
 
     def __init__(self, target: str, timeout: int = 30, delay: float = 1.0,
-                 allow_private: bool = False, ignore_robots: bool = False):
+                 allow_private: bool = False, ignore_robots: bool = False,
+                 domain_delay: float = 5.0):
         # Parse target: accept full URL (http://example.com) or bare domain (example.com)
         parsed = urlparse(target)
         if parsed.scheme in ('http', 'https'):
@@ -92,6 +95,8 @@ class WebsiteCrawler:
         self.pages_only: bool = False
         self.timeout = timeout
         self.delay = delay
+        # Minimum seconds between requests to the same external domain
+        self.domain_delay = domain_delay
         self.ignore_robots = ignore_robots
         self.robot_parser: RobotFileParser | None = None
         self.session = requests.Session()
@@ -183,7 +188,8 @@ class WebsiteCrawler:
 
     def crawl(self, collect_external: bool = False, check_external: bool = False,
               recursive: bool = False, pages_only: bool = False,
-              max_pages: int = 1000, max_depth: int = 10) -> None:
+              max_pages: int = 1000, max_depth: int = 10,
+              max_external_links: int = 500) -> None:
         """
         Crawl the website starting from the base URL using BFS.
 
@@ -197,10 +203,17 @@ class WebsiteCrawler:
         In recursive mode:
         - Crawls the base URL and follows all internal links using BFS
         - Continues until all reachable internal pages are visited
+
+        The set of discovered-but-unvisited URLs is capped at
+        QUEUE_MULTIPLIER * max_pages so dense link graphs cannot grow the
+        queue without bound.
         """
         self.pages_only = pages_only
         self.max_pages = max_pages
         self.max_depth = max_depth
+        self.max_external_links = max_external_links
+        max_queued = self.QUEUE_MULTIPLIER * max_pages
+        queue_capped = False
         self._load_robots_txt()
         logger.info(f"Starting crawl of {self.base_url}")
         logger.info(f"Mode: {'Recursive' if recursive else 'Single-level'} crawl, "
@@ -230,6 +243,15 @@ class WebsiteCrawler:
                     if next_depth > self.max_depth:
                         self.depth_limited_urls.add(next_url)
                         continue
+                    if len(queued) >= max_queued:
+                        if not queue_capped:
+                            queue_capped = True
+                            logger.warning(
+                                f"WARNING: Queue limit reached ({max_queued} URLs, "
+                                f"{self.QUEUE_MULTIPLIER}x max_pages). "
+                                f"Newly discovered URLs will be ignored."
+                            )
+                        break
                     queued.add(next_url)
                     queue.append((next_url, next_depth))
 
@@ -306,10 +328,45 @@ class WebsiteCrawler:
             time.sleep(self.delay)
         return discovered
 
-    def _check_external_links(self) -> None:
-        """Check HTTP status of each external link via HEAD request."""
-        logger.info(f"Checking {len(self.external_links)} external links...")
+    def _order_external_links(self) -> List[str]:
+        """Return external links round-robin interleaved by domain.
+
+        Spreading same-domain URLs apart means the per-domain delay rarely
+        has to block; the global delay usually covers it.
+        """
+        by_domain: dict[str, deque] = {}
         for url in sorted(self.external_links):
+            by_domain.setdefault(urlparse(url).netloc, deque()).append(url)
+        ordered: List[str] = []
+        while by_domain:
+            for domain in list(by_domain):
+                ordered.append(by_domain[domain].popleft())
+                if not by_domain[domain]:
+                    del by_domain[domain]
+        return ordered
+
+    def _check_external_links(self) -> None:
+        """Check HTTP status of each external link via HEAD request.
+
+        Checks at most max_external_links URLs, and waits at least
+        domain_delay seconds between requests to the same domain.
+        """
+        links = self._order_external_links()
+        if len(links) > self.max_external_links:
+            logger.warning(
+                f"WARNING: {len(links)} external links found, checking only the first "
+                f"{self.max_external_links}. Increase --max-external-links to check more."
+            )
+            links = links[:self.max_external_links]
+        logger.info(f"Checking {len(links)} external links...")
+        last_request: dict[str, float] = {}
+        for url in links:
+            domain = urlparse(url).netloc
+            if domain in last_request:
+                wait = self.domain_delay - (time.monotonic() - last_request[domain])
+                if wait > 0:
+                    logger.debug(f"Rate limiting {domain}: waiting {wait:.1f}s")
+                    time.sleep(wait)
             try:
                 resp = self.session.head(url, timeout=10, allow_redirects=True)
                 status = resp.status_code
@@ -321,6 +378,7 @@ class WebsiteCrawler:
             except Exception as e:
                 logger.debug(f"External {url}: failed ({e})")
                 status = 0
+            last_request[domain] = time.monotonic()
             self.external_links_checked.append((url, status))
             if self.delay > 0:
                 time.sleep(self.delay)

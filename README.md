@@ -54,6 +54,8 @@ The target accepts a bare domain (`example.com`) or a full URL (`http://example.
 | `-t`, `--timeout` | Request timeout in seconds | 30 |
 | `--max-pages` | Maximum number of pages to crawl | 1000 |
 | `--max-depth` | Maximum link distance from start URL (BFS) | 10 |
+| `--max-external-links` | Maximum external links to check with `--check-external` | 500 |
+| `--domain-delay` | Minimum seconds between requests to the same external domain | 5.0 |
 | `--delay` | Delay between requests in seconds (use 0 for local) | 1.0 |
 | `--allow-private` | Allow crawling domains that resolve to private IPs | Off |
 | `--ignore-robots` | Ignore robots.txt rules | Off |
