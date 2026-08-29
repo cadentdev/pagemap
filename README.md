@@ -2,6 +2,10 @@
 
 Crawl a website and create a structured map of its pages.
 
+## Requirements
+
+- Python 3.11 or later
+
 ## Installation
 
 ```bash
