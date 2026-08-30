@@ -76,6 +76,7 @@ sitewalker example.com -r -e --output-dir ~/crawls --output-filename acme-audit
 - **URL** — the page URL
 - **Title** — the page's `<title>` tag content
 - **Status Code** — HTTP response status
+- **Found On** — the page where this URL was first discovered (empty for the start URL). For a broken link, this is the page to fix.
 
 When using `-e`, external links are additionally saved to `{domain}_{timestamp}_external_links.csv`. The internal pages CSV is always generated. With `--check-external`, the external links CSV includes a Status Code column.
 

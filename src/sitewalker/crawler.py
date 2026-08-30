@@ -4,6 +4,7 @@ import csv
 import ipaddress
 import socket
 from collections import deque
+from dataclasses import dataclass
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
@@ -13,6 +14,23 @@ import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Page titles longer than this are truncated in results (#9)
+MAX_TITLE_LENGTH = 256
+
+
+@dataclass
+class PageResult:
+    """One row of the crawl output."""
+    url: str
+    title: str
+    status: int
+    found_on: str = ""  # URL of the page this one was first discovered on; "" for the start URL
+
+    CSV_HEADER = ('URL', 'Title', 'Status Code', 'Found On')
+
+    def as_row(self) -> tuple:
+        return (self.url, self.title, self.status, self.found_on)
 
 # List of file extensions that are considered web pages
 PAGE_EXTENSIONS = {
@@ -88,7 +106,7 @@ class WebsiteCrawler:
         # Normalize the base URL
         self.base_url, _ = self.process_url(self.base_url)
         self.visited_urls: Set[str] = set()
-        self.results: List[Tuple[str, str, int]] = []
+        self.results: List[PageResult] = []
         self.external_links: Set[str] = set()
         self.external_links_checked: List[Tuple[str, int]] = []
         self.depth_limited_urls: Set[str] = set()
@@ -221,19 +239,19 @@ class WebsiteCrawler:
                    f"{'pages only' if pages_only else 'all files'}, "
                    f"max_pages={max_pages}, max_depth={max_depth}")
 
-        # BFS queue: (url, depth)
-        queue: deque[Tuple[str, int]] = deque()
-        queue.append((self.base_url, 0))
+        # BFS queue: (url, depth, found_on)
+        queue: deque[Tuple[str, int, str]] = deque()
+        queue.append((self.base_url, 0, ""))
         # Track URLs already queued to avoid duplicates in the queue
         queued: Set[str] = {self.base_url}
 
         while queue:
-            url, depth = queue.popleft()
+            url, depth, found_on = queue.popleft()
             if len(self.visited_urls) >= self.max_pages:
                 logger.info(f"Reached max_pages limit ({self.max_pages})")
                 break
 
-            discovered = self._process_page(url, collect_external, depth)
+            discovered = self._process_page(url, collect_external, depth, found_on)
 
             if recursive:
                 for next_url in discovered:
@@ -253,7 +271,7 @@ class WebsiteCrawler:
                             )
                         break
                     queued.add(next_url)
-                    queue.append((next_url, next_depth))
+                    queue.append((next_url, next_depth, url))
 
         logger.info(f"Crawl complete. Visited {len(self.visited_urls)} pages")
         if self.depth_limited_urls:
@@ -273,8 +291,12 @@ class WebsiteCrawler:
             if check_external:
                 self._check_external_links()
 
-    def _process_page(self, url: str, collect_external: bool, depth: int) -> List[str]:
-        """Fetch a single page and return discovered internal URLs."""
+    def _process_page(self, url: str, collect_external: bool, depth: int,
+                      found_on: str = "") -> List[str]:
+        """Fetch a single page and return discovered internal URLs.
+
+        found_on is the URL of the page this one was first discovered on.
+        """
         discovered: List[str] = []
         try:
             clean_url, is_internal = self.process_url(url)
@@ -300,7 +322,9 @@ class WebsiteCrawler:
 
             # Process page title
             title = soup.title.string.strip() if soup.title and soup.title.string else "No title"
-            self.results.append((clean_url, title, response.status_code))
+            if len(title) > MAX_TITLE_LENGTH:
+                title = title[:MAX_TITLE_LENGTH]
+            self.results.append(PageResult(clean_url, title, response.status_code, found_on))
 
             # Process links
             for link in soup.find_all('a', href=True):
@@ -319,10 +343,10 @@ class WebsiteCrawler:
 
         except requests.HTTPError as e:
             logger.error(f"HTTP Error crawling {url}: {str(e)}")
-            self.results.append((url, "Error", e.response.status_code))
+            self.results.append(PageResult(url, "Error", e.response.status_code, found_on))
         except Exception as e:
             logger.error(f"Error crawling {url}: {str(e)}")
-            self.results.append((url, "Error", 0))
+            self.results.append(PageResult(url, "Error", 0, found_on))
 
         if self.delay > 0:
             time.sleep(self.delay)
@@ -401,13 +425,9 @@ class WebsiteCrawler:
         """Save results to a CSV file."""
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f, lineterminator='\n')
-            writer.writerow(['URL', 'Title', 'Status Code'])
-            for url, title, status in self.results:
-                writer.writerow([
-                    self._sanitize_csv_value(url),
-                    self._sanitize_csv_value(title),
-                    status
-                ])
+            writer.writerow(PageResult.CSV_HEADER)
+            for r in self.results:
+                writer.writerow([self._sanitize_csv_value(v) for v in r.as_row()])
         logger.info(f"Results saved to {output_file}")
 
     def save_external_links_results(self, filename: str) -> None:
