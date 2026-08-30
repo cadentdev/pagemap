@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Features
+
+- **`--output-dir` and `--output-filename` flags** — Choose where CSVs are written and what they're called. `--output-dir` is created on demand and validated before the crawl starts, so a bad path fails fast. `--output-filename NAME` replaces the generated `{domain}_{timestamp}` base; external links go to `NAME_external_links.csv`. The default remains the current directory. (#16)
+
+### Fixes
+
+- **Stricter output filename sanitization** — Domain-derived filenames now use a character whitelist, strip leading dots/dashes, and are capped at 100 characters, covering NUL bytes, `~`, and very long hostnames. `--output-filename` rejects any path separators or `..`, so user-supplied names cannot escape the output directory. (#9, filename half; title truncation follows with the results-model change)
+
 ### Infrastructure
 
 - **Automated PyPI publishing** — A `publish.yml` workflow builds and uploads the package to PyPI via Trusted Publishing whenever a GitHub release is published (or on manual dispatch). No API token is stored in the repo.

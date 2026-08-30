@@ -1,12 +1,65 @@
 #!/usr/bin/env python3
 
 import sys
+import os
+import re
 import argparse
 import logging
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlparse
 import requests
 from sitewalker.crawler import WebsiteCrawler
+
+
+# Filename components: keep letters, digits, dot, dash; everything else -> "_"
+_UNSAFE_CHARS = re.compile(r'[^A-Za-z0-9.-]+')
+MAX_FILENAME_COMPONENT = 100
+
+
+def sanitize_filename_component(value: str) -> str:
+    """Reduce an arbitrary string (e.g. a hostname) to a safe filename fragment.
+
+    Whitelists characters, strips leading dots/dashes (no hidden files, no
+    option-like names), and caps length so long hostnames can't produce
+    filesystem errors.
+    """
+    value = os.path.basename(value)
+    value = _UNSAFE_CHARS.sub('_', value).strip('._-')
+    return value[:MAX_FILENAME_COMPONENT] or 'site'
+
+
+def resolve_output_paths(output_dir: str | None, output_filename: str | None,
+                         domain: str, timestamp: str) -> tuple[Path, Path]:
+    """Return (results_csv, external_links_csv) paths.
+
+    Precedence: --output-filename > --output-dir > current directory.
+    --output-filename must be a bare filename; the directory always comes
+    from --output-dir (or the CWD), so there is no path-traversal surface.
+    Creates --output-dir if missing; raises ValueError on a bad directory
+    or filename.
+    """
+    base_dir = Path(output_dir) if output_dir else Path.cwd()
+    if base_dir.exists() and not base_dir.is_dir():
+        raise ValueError(f"Output path exists but is not a directory: {base_dir}")
+    base_dir.mkdir(parents=True, exist_ok=True)
+    if not os.access(base_dir, os.W_OK):
+        raise ValueError(f"Output directory is not writable: {base_dir}")
+
+    if output_filename:
+        if (os.path.isabs(output_filename) or '/' in output_filename
+                or '\\' in output_filename or '..' in output_filename):
+            raise ValueError(
+                f"--output-filename must be a bare filename, not a path: {output_filename!r} "
+                f"(use --output-dir to choose the directory)"
+            )
+        stem = output_filename[:-4] if output_filename.lower().endswith('.csv') else output_filename
+        if not stem:
+            raise ValueError("--output-filename must not be empty")
+    else:
+        stem = f"{sanitize_filename_component(domain)}_{timestamp}"
+
+    return base_dir / f"{stem}.csv", base_dir / f"{stem}_external_links.csv"
 
 
 def setup_logging(verbose: bool):
@@ -97,6 +150,17 @@ def main():
         help="Minimum seconds between requests to the same external domain (default: 5.0)"
     )
     parser.add_argument(
+        "--output-dir",
+        metavar="DIR",
+        help="Directory to write CSV files to (created if missing; default: current directory)"
+    )
+    parser.add_argument(
+        "--output-filename",
+        metavar="NAME",
+        help="Base name for output files instead of {domain}_{timestamp}; "
+             "external links go to NAME_external_links.csv"
+    )
+    parser.add_argument(
         "--allow-private",
         action="store_true",
         help="Allow crawling domains that resolve to private/reserved IPs"
@@ -128,15 +192,17 @@ def main():
                 )
                 sys.exit(1)
 
-        # Extract domain for safe filename
         parsed = urlparse(target)
-        safe_domain = parsed.netloc.replace('/', '_').replace('\\', '_').replace('..', '_')
+        timestamp = datetime.now().strftime("%Y-%m-%dT%H%M")
+        # Resolve (and validate) output paths before crawling, so a bad
+        # --output-dir fails fast instead of after a long crawl.
+        output_file, external_links_file = resolve_output_paths(
+            args.output_dir, args.output_filename, parsed.netloc, timestamp)
 
         crawler = WebsiteCrawler(target, timeout=args.timeout, delay=args.delay,
                                   allow_private=args.allow_private,
                                   ignore_robots=args.ignore_robots,
                                   domain_delay=args.domain_delay)
-        timestamp = datetime.now().strftime("%Y-%m-%dT%H%M")
 
         crawler.crawl(
             collect_external=args.external_links,
@@ -149,14 +215,12 @@ def main():
         )
 
         # Always save internal pages CSV
-        output_file = f"{safe_domain}_{timestamp}.csv"
-        crawler.save_results(output_file)
+        crawler.save_results(str(output_file))
         logging.info(f"Crawling complete! Results saved to {output_file}")
 
         # Additionally save external links CSV when -e is set
         if args.external_links:
-            external_links_file = f"{safe_domain}_{timestamp}_external_links.csv"
-            crawler.save_external_links_results(external_links_file)
+            crawler.save_external_links_results(str(external_links_file))
             logging.info(f"External links saved to {external_links_file}")
 
         logging.info(f"Total pages crawled: {len(crawler.visited_urls)}")

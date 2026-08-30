@@ -56,13 +56,22 @@ The target accepts a bare domain (`example.com`) or a full URL (`http://example.
 | `--max-depth` | Maximum link distance from start URL (BFS) | 10 |
 | `--max-external-links` | Maximum external links to check with `--check-external` | 500 |
 | `--domain-delay` | Minimum seconds between requests to the same external domain | 5.0 |
+| `--output-dir DIR` | Directory for CSV output (created if missing) | Current directory |
+| `--output-filename NAME` | Base name for output files (bare name, no path) | `{domain}_{timestamp}` |
 | `--delay` | Delay between requests in seconds (use 0 for local) | 1.0 |
 | `--allow-private` | Allow crawling domains that resolve to private IPs | Off |
 | `--ignore-robots` | Ignore robots.txt rules | Off |
 
 ## Output
 
-Results are saved to a CSV file named `{domain}_{timestamp}.csv` with columns:
+Results are saved to a CSV file named `{domain}_{timestamp}.csv` in the current directory. Use `--output-dir` to write elsewhere (the directory is created if needed) and `--output-filename` to replace the generated name:
+
+```bash
+sitewalker example.com -r -e --output-dir ~/crawls --output-filename acme-audit
+# → ~/crawls/acme-audit.csv and ~/crawls/acme-audit_external_links.csv
+```
+
+`--output-filename` must be a bare name — the directory always comes from `--output-dir`. Columns:
 
 - **URL** — the page URL
 - **Title** — the page's `<title>` tag content
