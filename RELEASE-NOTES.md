@@ -1,6 +1,10 @@
 # Release Notes
 
-## Unreleased
+## v0.3.2 (2026-08-29)
+
+### Breaking
+
+- **Minimum Python is now 3.11** (was 3.9). Python 3.9 reached end of life in October 2025 and 3.10 follows in October 2026. `pipx install sitewalker` will refuse to install on older interpreters. CI matrix is now 3.11 and 3.13. (#18)
 
 ### Features
 
@@ -11,9 +15,10 @@
 
 - **Bounded BFS queue** — The set of discovered-but-unvisited URLs is now capped at 5× `--max-pages`, preventing unbounded memory growth on sites with dense link graphs. A warning is logged when the cap is hit. (#8)
 
-### Breaking
+### Quality
 
-- **Minimum Python is now 3.11** (was 3.9). Python 3.9 reached end of life in October 2025 and 3.10 follows in October 2026. `pipx install sitewalker` will refuse to install on older interpreters. CI matrix is now 3.11 and 3.13. (#18)
+- 56 tests, 97% coverage, bandit clean
+- CI verified on Python 3.11 and 3.13
 
 ## v0.3.1 (2026-04-09)
 
