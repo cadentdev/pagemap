@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Infrastructure
+
+- **Automated PyPI publishing** — A `publish.yml` workflow builds and uploads the package to PyPI via Trusted Publishing whenever a GitHub release is published (or on manual dispatch). No API token is stored in the repo.
+
 ## v0.3.2 (2026-08-29)
 
 ### Breaking
