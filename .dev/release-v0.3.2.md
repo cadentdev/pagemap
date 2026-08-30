@@ -22,7 +22,7 @@
 | 11. Merge & Verify | [x] | CI green on 3.11 + 3.13 |
 | --- GATE: CI | [x] | PASS |
 | 12. Tag & GitHub Release | [x] | v0.3.2 tagged and released |
-| 13. Post-Release | [ ] | PyPI publish pending (manual) |
+| 13. Post-Release | [x] | PyPI 0.3.2 verified — published via publish.yml (Trusted Publishing, PR #24) |
 | 14. Branch Cleanup | [x] | 4 branches pruned (remotes auto-deleted on merge) |
 | 15. Retrospective | [x] | See below |
 
