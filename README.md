@@ -56,6 +56,7 @@ The target accepts a bare domain (`example.com`) or a full URL (`http://example.
 | `--max-depth` | Maximum link distance from start URL (BFS) | 10 |
 | `--max-external-links` | Maximum external links to check with `--check-external` | 500 |
 | `--domain-delay` | Minimum seconds between requests to the same external domain | 5.0 |
+| `--broken-only` | Print a summary of non-200 URLs to stdout after the crawl | Off |
 | `--output-dir DIR` | Directory for CSV output (created if missing) | Current directory |
 | `--output-filename NAME` | Base name for output files (bare name, no path) | `{domain}_{timestamp}` |
 | `--delay` | Delay between requests in seconds (use 0 for local) | 1.0 |
@@ -77,6 +78,8 @@ sitewalker example.com -r -e --output-dir ~/crawls --output-filename acme-audit
 - **Title** — the page's `<title>` tag content
 - **Status Code** — HTTP response status
 - **Found On** — the page where this URL was first discovered (empty for the start URL). For a broken link, this is the page to fix.
+
+URLs discovered beyond `--max-depth` are included as rows with title `skipped: max_depth` and an empty status code, so nothing the crawler saw is invisible in the output. Use `--broken-only` to print a summary of every non-200 URL (with its Found On page) to stdout at the end of the run.
 
 When using `-e`, external links are additionally saved to `{domain}_{timestamp}_external_links.csv`. The internal pages CSV is always generated. With `--check-external`, the external links CSV includes a Status Code column.
 

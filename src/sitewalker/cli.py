@@ -62,6 +62,24 @@ def resolve_output_paths(output_dir: str | None, output_filename: str | None,
     return base_dir / f"{stem}.csv", base_dir / f"{stem}_external_links.csv"
 
 
+def print_broken_summary(crawler) -> None:
+    """Print non-200 results to stdout for quick triage (--broken-only)."""
+    broken = [r for r in crawler.results if r.status is not None and r.status != 200]
+    broken_external = [(url, status) for url, status in crawler.external_links_checked
+                       if status != 200]
+    if not broken and not broken_external:
+        print("No broken links found.")
+        return
+    if broken:
+        print(f"Broken internal links ({len(broken)}):")
+        for r in sorted(broken, key=lambda r: r.url):
+            print(f"  {r.status}  {r.url}  (found on: {r.found_on or '-'})")
+    if broken_external:
+        print(f"Broken external links ({len(broken_external)}):")
+        for url, status in sorted(broken_external):
+            print(f"  {status}  {url}")
+
+
 def setup_logging(verbose: bool):
     """Configure logging based on verbosity level."""
     root_logger = logging.getLogger()
@@ -150,6 +168,11 @@ def main():
         help="Minimum seconds between requests to the same external domain (default: 5.0)"
     )
     parser.add_argument(
+        "--broken-only",
+        action="store_true",
+        help="Print a summary of non-200 URLs to stdout after the crawl"
+    )
+    parser.add_argument(
         "--output-dir",
         metavar="DIR",
         help="Directory to write CSV files to (created if missing; default: current directory)"
@@ -224,6 +247,9 @@ def main():
             logging.info(f"External links saved to {external_links_file}")
 
         logging.info(f"Total pages crawled: {len(crawler.visited_urls)}")
+
+        if args.broken_only:
+            print_broken_summary(crawler)
 
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")

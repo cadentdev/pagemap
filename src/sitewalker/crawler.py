@@ -24,7 +24,7 @@ class PageResult:
     """One row of the crawl output."""
     url: str
     title: str
-    status: int
+    status: int | None  # None for rows never fetched (e.g. skipped: max_depth)
     found_on: str = ""  # URL of the page this one was first discovered on; "" for the start URL
 
     CSV_HEADER = ('URL', 'Title', 'Status Code', 'Found On')
@@ -109,7 +109,8 @@ class WebsiteCrawler:
         self.results: List[PageResult] = []
         self.external_links: Set[str] = set()
         self.external_links_checked: List[Tuple[str, int]] = []
-        self.depth_limited_urls: Set[str] = set()
+        # URLs discovered beyond max_depth, mapped to the page they were found on
+        self.depth_limited_urls: dict[str, str] = {}
         self.pages_only: bool = False
         self.timeout = timeout
         self.delay = delay
@@ -259,7 +260,7 @@ class WebsiteCrawler:
                         continue
                     next_depth = depth + 1
                     if next_depth > self.max_depth:
-                        self.depth_limited_urls.add(next_url)
+                        self.depth_limited_urls.setdefault(next_url, url)
                         continue
                     if len(queued) >= max_queued:
                         if not queue_capped:
@@ -274,18 +275,16 @@ class WebsiteCrawler:
                     queue.append((next_url, next_depth, url))
 
         logger.info(f"Crawl complete. Visited {len(self.visited_urls)} pages")
-        if self.depth_limited_urls:
-            skipped = self.depth_limited_urls - self.visited_urls
-            if skipped:
-                logger.warning(
-                    f"WARNING: {len(skipped)} URLs were skipped due to max_depth={self.max_depth}. "
-                    f"These pages were discovered but never crawled. "
-                    f"Increase --max-depth to include them."
-                )
-                for url in sorted(skipped)[:10]:
-                    logger.warning(f"  Skipped: {url}")
-                if len(skipped) > 10:
-                    logger.warning(f"  ... and {len(skipped) - 10} more")
+        skipped = self.depth_limited_urls.keys() - self.visited_urls
+        if skipped:
+            logger.warning(
+                f"WARNING: {len(skipped)} URLs were skipped due to max_depth={self.max_depth}. "
+                f"They are included in the results CSV with title 'skipped: max_depth'. "
+                f"Increase --max-depth to crawl them."
+            )
+            for url in sorted(skipped):
+                self.results.append(PageResult(
+                    url, "skipped: max_depth", None, self.depth_limited_urls[url]))
         if collect_external:
             logger.info(f"Found {len(self.external_links)} unique external links")
             if check_external:

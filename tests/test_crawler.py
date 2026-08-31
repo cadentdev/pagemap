@@ -778,7 +778,10 @@ def test_max_depth_warning(caplog):
     assert 'https://example.com/d2' not in crawler.visited_urls
     assert 'https://example.com/d2' in crawler.depth_limited_urls
     assert any("1 URLs were skipped due to max_depth=1" in msg for msg in caplog.messages)
-    assert any("Skipped: https://example.com/d2" in msg for msg in caplog.messages)
+    skipped_row = next(r for r in crawler.results if r.url == 'https://example.com/d2')
+    assert skipped_row.title == "skipped: max_depth"
+    assert skipped_row.status is None
+    assert skipped_row.found_on == 'https://example.com/d1' 
 
 
 def test_csv_sanitization():
@@ -1131,3 +1134,37 @@ def test_save_results_sanitizes_found_on(tmp_path):
     output_file = tmp_path / "results.csv"
     crawler.save_results(str(output_file))
     assert "'=cmd|calc" in output_file.read_text()
+
+
+# --- Skipped rows in output (#14 part 2) ---
+
+def test_skipped_rows_written_to_csv(tmp_path):
+    """Depth-skipped rows appear in the CSV with an empty status."""
+    crawler = WebsiteCrawler("example.com")
+    crawler.results = [
+        PageResult("https://example.com", "Home", 200),
+        PageResult("https://example.com/deep", "skipped: max_depth", None,
+                   found_on="https://example.com"),
+    ]
+    output_file = tmp_path / "results.csv"
+    crawler.save_results(str(output_file))
+
+    with open(output_file, newline='', encoding='utf-8') as f:
+        rows = list(csv.reader(f))
+    assert rows[2] == ["https://example.com/deep", "skipped: max_depth", "",
+                       "https://example.com"]
+
+
+@responses.activate
+def test_skipped_urls_do_not_count_as_visited():
+    """Skipped rows are recorded but the URLs are never fetched."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body><a href="/d1">1</a></body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/d1',
+        body='<html><body><a href="/d2">2</a></body></html>', status=200)
+
+    crawler.crawl(recursive=True, max_depth=1)
+
+    assert 'https://example.com/d2' not in crawler.visited_urls
+    assert len(responses.calls) == 3  # robots.txt + 2 pages; /d2 never requested

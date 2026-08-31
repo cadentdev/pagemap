@@ -8,6 +8,9 @@
 
 - **`--output-dir` and `--output-filename` flags** — Choose where CSVs are written and what they're called. `--output-dir` is created on demand and validated before the crawl starts, so a bad path fails fast. `--output-filename NAME` replaces the generated `{domain}_{timestamp}` base; external links go to `NAME_external_links.csv`. The default remains the current directory. (#16)
 
+- **Depth-skipped URLs appear in the output** — URLs discovered beyond `--max-depth` are now rows in the results CSV (title `skipped: max_depth`, empty status, Found On preserved) instead of only a log warning. A malformed link at the depth boundary is no longer invisible. (#14, part 2)
+- **`--broken-only` flag** — Prints a summary of all non-200 internal URLs (with the page each was found on) and broken external links to stdout after the crawl, so there's nothing to grep out of the logs. (#14)
+
 ### Fixes
 
 - **Title truncation** — Page titles are capped at 256 characters in the CSV, so a page with a maliciously long `<title>` can't bloat the output. (#9, title half)
