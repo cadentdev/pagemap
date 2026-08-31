@@ -90,7 +90,8 @@ class WebsiteCrawler:
 
     def __init__(self, target: str, timeout: int = 30, delay: float = 1.0,
                  allow_private: bool = False, ignore_robots: bool = False,
-                 domain_delay: float = 5.0):
+                 domain_delay: float = 5.0,
+                 page_extensions: Set[str] | None = None):
         # Parse target: accept full URL (http://example.com) or bare domain (example.com)
         parsed = urlparse(target)
         if parsed.scheme in ('http', 'https'):
@@ -114,6 +115,9 @@ class WebsiteCrawler:
         self.depth_limited_urls: dict[str, tuple[str, str]] = {}
         self.pages_only: bool = False
         self.include_assets: bool = False
+        # Extensions treated as pages by -p; None means the built-in set
+        self.page_extensions: Set[str] = (
+            PAGE_EXTENSIONS if page_extensions is None else set(page_extensions))
         self.timeout = timeout
         self.delay = delay
         # Minimum seconds between requests to the same external domain
@@ -173,7 +177,7 @@ class WebsiteCrawler:
             # Check if the file extension (if any) is in our list of page extensions
             if '.' in path:
                 ext = path.split('.')[-1].lower()
-                return ext in PAGE_EXTENSIONS
+                return ext in self.page_extensions
 
             # URLs without extensions are considered pages
             return True

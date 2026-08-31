@@ -7,6 +7,12 @@ import os
 import argparse
 import logging
 
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path, monkeypatch):
+    """Keep CLI tests from reading a real user config file."""
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+
+
 @pytest.fixture
 def reset_logging():
     """Reset logging configuration before and after each test"""
@@ -323,3 +329,73 @@ def test_main_with_assets_flag():
             with patch.object(sys, 'argv', ['sitewalker', 'example.com', '-a']):
                 main()
     assert mock_crawler.crawl.call_args.kwargs['include_assets'] is True
+
+
+# --- Config file wiring (#17) ---
+
+def _run_main(argv, crawler=None):
+    crawler = crawler or MagicMock()
+    with patch('sitewalker.cli.requests.head'):
+        with patch('sitewalker.cli.WebsiteCrawler', return_value=crawler) as cls:
+            with patch.object(sys, 'argv', ['sitewalker'] + argv):
+                main()
+    return crawler, cls
+
+
+def test_config_output_dir_used_when_no_flag(tmp_path):
+    cfg = tmp_path / "c.toml"
+    out = tmp_path / "from-config"
+    cfg.write_text(f'output_dir = "{out}"\n')
+    crawler, _ = _run_main(['example.com', '--config', str(cfg)])
+    saved_path = crawler.save_results.call_args.args[0]
+    assert saved_path == str(out / saved_path.split('/')[-1])
+    assert out.is_dir()
+
+
+def test_cli_output_dir_beats_config(tmp_path):
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(f'output_dir = "{tmp_path / "config-dir"}"\n')
+    cli_dir = tmp_path / "cli-dir"
+    crawler, _ = _run_main(['example.com', '--config', str(cfg),
+                            '--output-dir', str(cli_dir)])
+    assert crawler.save_results.call_args.args[0].startswith(str(cli_dir))
+    assert not (tmp_path / "config-dir").exists()
+
+
+def test_config_page_extensions_passed_to_crawler(tmp_path):
+    cfg = tmp_path / "c.toml"
+    cfg.write_text('page_extensions = ["html", "custom"]\n')
+    _, cls = _run_main(['example.com', '--config', str(cfg)])
+    assert cls.call_args.kwargs['page_extensions'] == {'html', 'custom'}
+
+
+def test_no_config_ignores_config_file(tmp_path):
+    cfg = tmp_path / "c.toml"
+    cfg.write_text('not_a_real_key = 1\n')  # would error if loaded
+    crawler, cls = _run_main(['example.com', '--config', str(cfg), '--no-config'])
+    crawler.crawl.assert_called_once()
+    assert cls.call_args.kwargs['page_extensions'] is None
+
+
+def test_default_config_path_loaded(tmp_path, monkeypatch):
+    cfg_dir = tmp_path / 'xdg' / 'sitewalker'
+    cfg_dir.mkdir(parents=True)
+    out = tmp_path / 'auto'
+    (cfg_dir / 'config.toml').write_text(f'output_dir = "{out}"\n')
+    crawler, _ = _run_main(['example.com'])
+    assert crawler.save_results.call_args.args[0].startswith(str(out))
+
+
+def test_bad_config_exits_before_crawl(tmp_path, capsys, reset_logging):
+    cfg = tmp_path / "c.toml"
+    cfg.write_text('output_dri = "/tmp"\n')
+    mock_crawler = MagicMock()
+    with patch('sitewalker.cli.requests.head'):
+        with patch('sitewalker.cli.WebsiteCrawler', return_value=mock_crawler):
+            with patch.object(sys, 'argv', ['sitewalker', 'example.com',
+                                            '--config', str(cfg)]):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+    assert exc_info.value.code == 1
+    mock_crawler.crawl.assert_not_called()
+    assert "Unknown config key" in capsys.readouterr().err

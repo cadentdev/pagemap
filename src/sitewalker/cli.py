@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 import requests
 from sitewalker.crawler import WebsiteCrawler
+from sitewalker.config import load_config, default_config_path
 
 
 # Filename components: keep letters, digits, dot, dash; everything else -> "_"
@@ -190,6 +191,16 @@ def main():
              "external links go to NAME_external_links.csv"
     )
     parser.add_argument(
+        "--config",
+        metavar="PATH",
+        help=f"Config file to load (default: {default_config_path()})"
+    )
+    parser.add_argument(
+        "--no-config",
+        action="store_true",
+        help="Ignore any config file"
+    )
+    parser.add_argument(
         "--allow-private",
         action="store_true",
         help="Allow crawling domains that resolve to private/reserved IPs"
@@ -204,6 +215,10 @@ def main():
     setup_logging(args.verbose)
 
     try:
+        # Precedence: CLI flags > config file > built-in defaults
+        config = {} if args.no_config else load_config(args.config)
+        output_dir = args.output_dir if args.output_dir is not None else config.get('output_dir')
+
         target = args.target
         parsed = urlparse(target)
 
@@ -226,12 +241,13 @@ def main():
         # Resolve (and validate) output paths before crawling, so a bad
         # --output-dir fails fast instead of after a long crawl.
         output_file, external_links_file = resolve_output_paths(
-            args.output_dir, args.output_filename, parsed.netloc, timestamp)
+            output_dir, args.output_filename, parsed.netloc, timestamp)
 
         crawler = WebsiteCrawler(target, timeout=args.timeout, delay=args.delay,
                                   allow_private=args.allow_private,
                                   ignore_robots=args.ignore_robots,
-                                  domain_delay=args.domain_delay)
+                                  domain_delay=args.domain_delay,
+                                  page_extensions=config.get('page_extensions'))
 
         crawler.crawl(
             collect_external=args.external_links,
