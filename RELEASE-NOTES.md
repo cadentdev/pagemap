@@ -20,7 +20,7 @@
 - **Crawl-mode log line no longer overstates scope** — The startup log now states discovery scope (`discovery: anchors` or `anchors+assets`) and filter separately, instead of the misleading "all files", which described the filter while discovery was anchors-only. (#15)
 - **Title truncation** — Page titles are capped at 256 characters in the CSV, so a page with a maliciously long `<title>` can't bloat the output. (#9, title half)
 
-- **Stricter output filename sanitization** — Domain-derived filenames now use a character whitelist, strip leading dots/dashes, and are capped at 100 characters, covering NUL bytes, `~`, and very long hostnames. `--output-filename` rejects any path separators or `..`, so user-supplied names cannot escape the output directory. (#9, filename half; title truncation follows with the results-model change)
+- **Stricter output filename sanitization** — Domain-derived filenames now use a character whitelist, strip leading dots/dashes, and are capped at 100 characters, covering NUL bytes, `~`, and very long hostnames. `--output-filename` rejects any path separators or `..`, so user-supplied names cannot escape the output directory. (#9, filename half)
 
 ### Infrastructure
 
