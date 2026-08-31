@@ -9,3 +9,6 @@ dist/
 .venv/
 .DS_Store
 *.csv
+
+# Per-contributor ntfy-bus identity (never committed — see cadentdev/ntfy-bus)
+.claude/ntfy-bus.config.json
