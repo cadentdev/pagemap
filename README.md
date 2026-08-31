@@ -64,8 +64,25 @@ The target accepts a bare domain (`example.com`) or a full URL (`http://example.
 | `--output-dir DIR` | Directory for CSV output (created if missing) | Current directory |
 | `--output-filename NAME` | Base name for output files (bare name, no path) | `{domain}_{timestamp}` |
 | `--delay` | Delay between requests in seconds (use 0 for local) | 1.0 |
+| `--config PATH` | Config file to load | `~/.config/sitewalker/config.toml` |
+| `--no-config` | Ignore any config file | Off |
 | `--allow-private` | Allow crawling domains that resolve to private IPs | Off |
 | `--ignore-robots` | Ignore robots.txt rules | Off |
+
+## Configuration
+
+Settings that rarely change can live in a TOML config file at `~/.config/sitewalker/config.toml` (or `$XDG_CONFIG_HOME/sitewalker/config.toml`; override the location with `--config`, skip it entirely with `--no-config`). CLI flags always win over config values.
+
+```toml
+# Where CSVs are written when --output-dir isn't given
+output_dir = "~/crawls"
+
+# Replaces the built-in extension set used by -p/--pages.
+# Include "" to keep treating extension-less URLs and directories as pages.
+page_extensions = ["", "html", "htm", "php", "story"]
+```
+
+Recognized keys: `output_dir`, `page_extensions`. Unknown keys are an error, so typos fail loudly instead of being ignored.
 
 ## Output
 

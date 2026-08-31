@@ -1335,3 +1335,19 @@ def test_asset_blocked_by_robots_not_recorded():
 
     assert not any(r.kind == 'asset' for r in crawler.results)
     assert 'https://example.com/private/x.gif' not in crawler.visited_urls
+
+
+# --- Configurable page extensions (#17) ---
+
+def test_custom_page_extensions_replace_builtin():
+    crawler = WebsiteCrawler("example.com", page_extensions={'story', ''})
+    assert crawler.is_page("https://example.com/tale.story")
+    assert not crawler.is_page("https://example.com/index.html")
+    # extension-less paths and directories still follow the given set
+    assert crawler.is_page("https://example.com/about/")
+
+
+def test_default_page_extensions_unchanged():
+    crawler = WebsiteCrawler("example.com")
+    assert crawler.is_page("https://example.com/index.html")
+    assert not crawler.is_page("https://example.com/logo.gif")

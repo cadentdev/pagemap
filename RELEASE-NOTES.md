@@ -13,6 +13,8 @@
 
 - **`-a`/`--assets` flag** — Discovery now optionally extends beyond anchors to `img[src]`, `script[src]`, `link[href]`, `source[src]`, and `srcset`. Assets are fetched for their HTTP status with HEAD (GET fallback on 405, body never downloaded), recorded with `Kind=asset` and an empty title, and never parsed for further links. They are recorded even in non-recursive mode and count toward `--max-pages`. Without `-a` an anchors-only crawl of an image-heavy site can miss most of its URL inventory — the motivating case under-reported a 417-URL site as 95. (#15)
 
+- **Config file** — Persistent settings in `~/.config/sitewalker/config.toml` (TOML, stdlib `tomllib`; honors `$XDG_CONFIG_HOME`, `--config PATH` to point elsewhere, `--no-config` to skip). Two keys: `output_dir` (default output directory) and `page_extensions` (replaces the built-in extension set used by `-p`). Precedence is CLI flags > config file > built-in defaults; unknown keys or wrong types fail loudly before the crawl starts. (#17)
+
 ### Fixes
 
 - **Crawl-mode log line no longer overstates scope** — The startup log now states discovery scope (`discovery: anchors` or `anchors+assets`) and filter separately, instead of the misleading "all files", which described the filter while discovery was anchors-only. (#15)
