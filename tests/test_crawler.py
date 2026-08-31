@@ -303,9 +303,9 @@ def test_save_results():
             rows = list(reader)
 
             # Check header and content
-            assert rows[0] == ["URL", "Title", "Status Code", "Found On"]
+            assert rows[0] == ["URL", "Title", "Status Code", "Found On", "Kind"]
             assert len(rows) == 4  # Header + 3 results
-            assert rows[1] == ["https://example.com", "Home Page", "200", ""]
+            assert rows[1] == ["https://example.com", "Home Page", "200", "", "page"]
 
     finally:
         os.unlink(output_file)
@@ -641,7 +641,7 @@ def test_save_results_empty(crawler_instance, tmp_path):
     assert output_file.exists()
     with open(output_file, 'r') as f:
         content = f.read()
-        assert content.strip() == "URL,Title,Status Code,Found On"
+        assert content.strip() == "URL,Title,Status Code,Found On,Kind"
 
 
 def test_ssrf_blocks_localhost():
@@ -1122,9 +1122,9 @@ def test_save_results_writes_found_on_column(tmp_path):
 
     with open(output_file, newline='', encoding='utf-8') as f:
         rows = list(csv.reader(f))
-    assert rows[0] == ["URL", "Title", "Status Code", "Found On"]
-    assert rows[1] == ["https://example.com", "Home", "200", ""]
-    assert rows[2] == ["https://example.com/about", "About", "200", "https://example.com"]
+    assert rows[0] == ["URL", "Title", "Status Code", "Found On", "Kind"]
+    assert rows[1] == ["https://example.com", "Home", "200", "", "page"]
+    assert rows[2] == ["https://example.com/about", "About", "200", "https://example.com", "page"]
 
 
 def test_save_results_sanitizes_found_on(tmp_path):
@@ -1152,7 +1152,7 @@ def test_skipped_rows_written_to_csv(tmp_path):
     with open(output_file, newline='', encoding='utf-8') as f:
         rows = list(csv.reader(f))
     assert rows[2] == ["https://example.com/deep", "skipped: max_depth", "",
-                       "https://example.com"]
+                       "https://example.com", "page"]
 
 
 @responses.activate
@@ -1168,3 +1168,170 @@ def test_skipped_urls_do_not_count_as_visited():
 
     assert 'https://example.com/d2' not in crawler.visited_urls
     assert len(responses.calls) == 3  # robots.txt + 2 pages; /d2 never requested
+
+
+# --- Asset discovery (#15) ---
+
+ASSET_PAGE = ('<html><head><title>Home</title>'
+              '<link href="/css/site.css" rel="stylesheet"></head><body>'
+              '<a href="/next.html">Next</a>'
+              '<img src="/images/logo.gif">'
+              '<script src="/js/app.js"></script>'
+              '<img srcset="/images/small.jpg 1x, /images/big.jpg 2x" src="/images/mid.jpg">'
+              '</body></html>')
+
+
+@responses.activate
+def test_assets_discovered_and_recorded():
+    """img/link/script/srcset targets are recorded with kind=asset, title empty."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com', body=ASSET_PAGE, status=200)
+    responses.add(responses.GET, 'https://example.com/next.html',
+        body='<html><head><title>Next</title></head></html>', status=200)
+    for path in ('/css/site.css', '/images/logo.gif', '/js/app.js',
+                 '/images/small.jpg', '/images/big.jpg', '/images/mid.jpg'):
+        responses.add(responses.HEAD, f'https://example.com{path}', status=200)
+
+    crawler.crawl(recursive=True, include_assets=True)
+
+    by_url = {r.url: r for r in crawler.results}
+    assert by_url['https://example.com'].kind == 'page'
+    for path in ('/css/site.css', '/images/logo.gif', '/js/app.js',
+                 '/images/small.jpg', '/images/big.jpg', '/images/mid.jpg'):
+        r = by_url[f'https://example.com{path}']
+        assert r.kind == 'asset'
+        assert r.status == 200
+        assert r.title == ''
+        assert r.found_on == 'https://example.com'
+
+
+@responses.activate
+def test_assets_not_discovered_by_default():
+    """Without include_assets, discovery stays anchors-only."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com', body=ASSET_PAGE, status=200)
+    responses.add(responses.GET, 'https://example.com/next.html',
+        body='<html><head><title>Next</title></head></html>', status=200)
+
+    crawler.crawl(recursive=True)
+
+    urls = {r.url for r in crawler.results}
+    assert urls == {'https://example.com', 'https://example.com/next.html'}
+
+
+@responses.activate
+def test_assets_recorded_in_non_recursive_mode():
+    """Assets on the start page are recorded even without -r; page links are not followed."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com', body=ASSET_PAGE, status=200)
+    for path in ('/css/site.css', '/images/logo.gif', '/js/app.js',
+                 '/images/small.jpg', '/images/big.jpg', '/images/mid.jpg'):
+        responses.add(responses.HEAD, f'https://example.com{path}', status=200)
+
+    crawler.crawl(recursive=False, include_assets=True)
+
+    kinds = {r.url: r.kind for r in crawler.results}
+    assert 'https://example.com/next.html' not in kinds
+    assert kinds['https://example.com/images/logo.gif'] == 'asset'
+
+
+@responses.activate
+def test_asset_is_recorded_not_traversed():
+    """An asset that returns HTML is still never parsed for links."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body><img src="/sneaky"></body></html>', status=200)
+    responses.add(responses.HEAD, 'https://example.com/sneaky', status=200)
+
+    crawler.crawl(recursive=True, include_assets=True)
+
+    assert {r.url for r in crawler.results} == {'https://example.com',
+                                                'https://example.com/sneaky'}
+    # HEAD only — the asset body was never requested
+    assert not any(c.request.method == 'GET' and c.request.url.endswith('/sneaky')
+                   for c in responses.calls)
+
+
+@responses.activate
+def test_asset_head_405_falls_back_to_get():
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body><img src="/pic.jpg"></body></html>', status=200)
+    responses.add(responses.HEAD, 'https://example.com/pic.jpg', status=405)
+    responses.add(responses.GET, 'https://example.com/pic.jpg', status=200)
+
+    crawler.crawl(recursive=True, include_assets=True)
+
+    asset = next(r for r in crawler.results if r.kind == 'asset')
+    assert asset.status == 200
+
+
+@responses.activate
+def test_broken_asset_recorded_with_status():
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body><img src="/gone.gif"></body></html>', status=200)
+    responses.add(responses.HEAD, 'https://example.com/gone.gif', status=404)
+
+    crawler.crawl(recursive=True, include_assets=True)
+
+    asset = next(r for r in crawler.results if r.kind == 'asset')
+    assert asset.status == 404
+    assert asset.found_on == 'https://example.com'
+
+
+@responses.activate
+def test_external_assets_collected_with_e():
+    """A CDN-hosted asset goes to external_links when collecting externals."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body><img src="https://cdn.example.net/logo.png"></body></html>',
+        status=200)
+
+    crawler.crawl(recursive=True, include_assets=True, collect_external=True)
+
+    assert 'https://cdn.example.net/logo.png' in crawler.external_links
+    assert all(r.kind == 'page' for r in crawler.results)
+
+
+@responses.activate
+def test_assets_count_toward_max_pages():
+    crawler = WebsiteCrawler("example.com", delay=0)
+    body = '<html><body>' + ''.join(f'<img src="/i{n}.gif">' for n in range(5)) + '</body></html>'
+    responses.add(responses.GET, 'https://example.com', body=body, status=200)
+    for n in range(5):
+        responses.add(responses.HEAD, f'https://example.com/i{n}.gif', status=200)
+
+    crawler.crawl(recursive=True, include_assets=True, max_pages=3)
+
+    assert len(crawler.visited_urls) == 3
+
+
+@responses.activate
+def test_asset_fetch_error_recorded():
+    """A connection failure on an asset yields an Error row, not a crash."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body><img src="/dead.gif"></body></html>', status=200)
+    responses.add(responses.HEAD, 'https://example.com/dead.gif',
+        body=requests.ConnectionError("refused"))
+
+    crawler.crawl(recursive=True, include_assets=True)
+
+    asset = next(r for r in crawler.results if r.kind == 'asset')
+    assert (asset.title, asset.status) == ('Error', 0)
+    assert asset.found_on == 'https://example.com'
+
+
+@responses.activate
+def test_asset_blocked_by_robots_not_recorded():
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com/robots.txt',
+        body="User-agent: *\nDisallow: /private/\n", status=200)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body><img src="/private/x.gif"></body></html>', status=200)
+
+    crawler.crawl(recursive=True, include_assets=True)
+
+    assert not any(r.kind == 'asset' for r in crawler.results)
+    assert 'https://example.com/private/x.gif' not in crawler.visited_urls
