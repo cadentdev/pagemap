@@ -259,3 +259,57 @@ def test_main_bad_output_dir_fails_before_crawl(tmp_path, capsys, reset_logging)
     assert exc_info.value.code == 1
     mock_crawler.crawl.assert_not_called()
     assert "not a directory" in capsys.readouterr().err
+
+
+# --- --broken-only summary (#14) ---
+
+from sitewalker.cli import print_broken_summary
+from sitewalker.crawler import PageResult
+
+
+def _crawler_with(results, external_checked=()):
+    c = MagicMock()
+    c.results = results
+    c.external_links_checked = list(external_checked)
+    return c
+
+
+def test_print_broken_summary_lists_non_200_with_referrer(capsys):
+    crawler = _crawler_with([
+        PageResult("https://example.com", "Home", 200),
+        PageResult("https://example.com/missing", "Error", 404, found_on="https://example.com"),
+        PageResult("https://example.com/deep", "skipped: max_depth", None,
+                   found_on="https://example.com"),
+    ], external_checked=[("https://gone.com", 404), ("https://ok.com", 200)])
+
+    print_broken_summary(crawler)
+    out = capsys.readouterr().out
+    assert "Broken internal links (1):" in out
+    assert "404  https://example.com/missing  (found on: https://example.com)" in out
+    # skipped rows and 200s are not broken
+    assert "skipped" not in out
+    assert "https://example.com/deep" not in out
+    assert "Broken external links (1):" in out
+    assert "404  https://gone.com" in out
+    assert "https://ok.com" not in out
+
+
+def test_print_broken_summary_all_ok(capsys):
+    crawler = _crawler_with([PageResult("https://example.com", "Home", 200)])
+    print_broken_summary(crawler)
+    assert capsys.readouterr().out == "No broken links found.\n"
+
+
+def test_main_broken_only_flag(capsys):
+    """--broken-only prints the summary after the crawl."""
+    mock_crawler = MagicMock()
+    mock_crawler.results = [
+        PageResult("https://example.com/bad", "Error", 500, found_on="https://example.com"),
+    ]
+    mock_crawler.external_links_checked = []
+    with patch('sitewalker.cli.requests.head'):
+        with patch('sitewalker.cli.WebsiteCrawler', return_value=mock_crawler):
+            with patch.object(sys, 'argv', ['sitewalker', 'example.com', '--broken-only']):
+                main()
+    out = capsys.readouterr().out
+    assert "500  https://example.com/bad" in out
