@@ -52,25 +52,32 @@ The target accepts a bare domain (`example.com`) or a full URL (`http://example.
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| **Crawl scope** | | |
 | `-r`, `--recursive` | Recursively crawl internal links | Off |
-| `-e`, `--external-links` | Collect external links | Off |
-| `--check-external` | Check HTTP status of external links (requires `-e`) | Off |
-| `-p`, `--pages` | Only crawl web pages (HTML, PHP, etc.) | Off |
 | `-a`, `--assets` | Also discover `img`/`script`/`link`/`source` assets (recorded via HEAD, never parsed) | Off |
-| `-v`, `--verbose` | Enable verbose/debug output | Off |
-| `-t`, `--timeout` | Request timeout in seconds | 30 |
+| `-p`, `--pages` | Only crawl web pages (HTML, PHP, etc.) | Off |
 | `--max-pages` | Maximum number of pages to crawl | 1000 |
 | `--max-depth` | Maximum link distance from start URL (BFS) | 10 |
+| **External links** | | |
+| `-e`, `--external-links` | Collect external links | Off |
+| `--check-external` | Check HTTP status of external links (requires `-e`) | Off |
 | `--max-external-links` | Maximum external links to check with `--check-external` | 500 |
 | `--domain-delay` | Minimum seconds between requests to the same external domain | 5.0 |
-| `--broken-only` | Print a summary of non-200 URLs to stdout after the crawl | Off |
+| **Output** | | |
 | `--output-dir DIR` | Directory for CSV output (created if missing) | Current directory |
 | `--output-filename NAME` | Base name for output files (bare name, no path) | `{domain}_{timestamp}` |
+| `--broken-only` | Print a summary of non-200 URLs to stdout after the crawl | Off |
+| **Requests** | | |
+| `-t`, `--timeout` | Request timeout in seconds | 30 |
 | `--delay` | Delay between requests in seconds (use 0 for local) | 1.0 |
+| **Configuration** | | |
 | `--config PATH` | Config file to load | `~/.config/sitewalker/config.toml` |
 | `--no-config` | Ignore any config file | Off |
+| **Safety overrides** | | |
 | `--allow-private` | Allow crawling domains that resolve to private IPs | Off |
 | `--ignore-robots` | Ignore robots.txt rules | Off |
+| **Other** | | |
+| `-v`, `--verbose` | Enable verbose/debug output | Off |
 
 ## Configuration
 

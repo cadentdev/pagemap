@@ -1,12 +1,12 @@
 # Release Notes
 
-## Unreleased
+## v0.4.0 (2026-08-31)
 
 ### Features
 
 - **`Found On` column** — The results CSV now records the page each URL was first discovered on (empty for the start URL). When a link returns 404, this is the page that needs fixing. (#14, part 1)
-
 - **`--output-dir` and `--output-filename` flags** — Choose where CSVs are written and what they're called. `--output-dir` is created on demand and validated before the crawl starts, so a bad path fails fast. `--output-filename NAME` replaces the generated `{domain}_{timestamp}` base; external links go to `NAME_external_links.csv`. The default remains the current directory. (#16)
+
 
 - **Depth-skipped URLs appear in the output** — URLs discovered beyond `--max-depth` are now rows in the results CSV (title `skipped: max_depth`, empty status, Found On preserved) instead of only a log warning. A malformed link at the depth boundary is no longer invisible. (#14, part 2)
 - **`--broken-only` flag** — Prints a summary of all non-200 internal URLs (with the page each was found on) and broken external links to stdout after the crawl, so there's nothing to grep out of the logs. (#14)
@@ -25,6 +25,12 @@
 ### Infrastructure
 
 - **Automated PyPI publishing** — A `publish.yml` workflow builds and uploads the package to PyPI via Trusted Publishing whenever a GitHub release is published (or on manual dispatch). No API token is stored in the repo.
+
+### Quality
+
+- 120 tests, 97% coverage, bandit clean
+- Pre-release security red-team review: no vulnerabilities in the release delta; three pre-existing hardening items filed as #32, #33, #34
+- README options table and `--help` regrouped by purpose (#27)
 
 ## v0.3.2 (2026-08-29)
 

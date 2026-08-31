@@ -108,104 +108,116 @@ def main():
         help="Domain or URL to crawl (e.g., example.com or http://example.com)"
     )
     parser.add_argument(
-        "-e", "--external-links",
-        action="store_true",
-        help="Collect external links found on the domain"
-    )
-    parser.add_argument(
-        "--check-external",
-        action="store_true",
-        help="Check HTTP status of each external link (requires -e)"
-    )
-    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Enable verbose output"
     )
-    parser.add_argument(
+
+    scope = parser.add_argument_group("crawl scope")
+    scope.add_argument(
         "-r", "--recursive",
         action="store_true",
         help="Recursively crawl internal links"
     )
-    parser.add_argument(
-        "-p", "--pages",
-        action="store_true",
-        help="Only crawl web pages (HTML, PHP, etc.) and skip other file types"
-    )
-    parser.add_argument(
-        "-t", "--timeout",
-        type=int,
-        default=30,
-        help="Request timeout in seconds (default: 30)"
-    )
-    parser.add_argument(
-        "--max-pages",
-        type=int,
-        default=1000,
-        help="Maximum number of pages to crawl (default: 1000)"
-    )
-    parser.add_argument(
-        "--max-depth",
-        type=int,
-        default=10,
-        help="Maximum crawl depth for recursive mode (default: 10)"
-    )
-    parser.add_argument(
-        "--delay",
-        type=float,
-        default=1.0,
-        help="Delay between requests in seconds (default: 1.0, use 0 for local servers)"
-    )
-    parser.add_argument(
-        "--max-external-links",
-        type=int,
-        default=500,
-        help="Maximum number of external links to check with --check-external (default: 500)"
-    )
-    parser.add_argument(
-        "--domain-delay",
-        type=float,
-        default=5.0,
-        help="Minimum seconds between requests to the same external domain (default: 5.0)"
-    )
-    parser.add_argument(
+    scope.add_argument(
         "-a", "--assets",
         action="store_true",
         help="Also discover and record img/script/link/source assets "
              "(fetched for status via HEAD, never parsed; counts toward --max-pages)"
     )
-    parser.add_argument(
-        "--broken-only",
+    scope.add_argument(
+        "-p", "--pages",
         action="store_true",
-        help="Print a summary of non-200 URLs to stdout after the crawl"
+        help="Only crawl web pages (HTML, PHP, etc.) and skip other file types"
     )
-    parser.add_argument(
+    scope.add_argument(
+        "--max-pages",
+        type=int,
+        default=1000,
+        help="Maximum number of pages to crawl (default: 1000)"
+    )
+    scope.add_argument(
+        "--max-depth",
+        type=int,
+        default=10,
+        help="Maximum crawl depth for recursive mode (default: 10)"
+    )
+
+    external = parser.add_argument_group("external links")
+    external.add_argument(
+        "-e", "--external-links",
+        action="store_true",
+        help="Collect external links found on the domain"
+    )
+    external.add_argument(
+        "--check-external",
+        action="store_true",
+        help="Check HTTP status of each external link (requires -e)"
+    )
+    external.add_argument(
+        "--max-external-links",
+        type=int,
+        default=500,
+        help="Maximum number of external links to check with --check-external (default: 500)"
+    )
+    external.add_argument(
+        "--domain-delay",
+        type=float,
+        default=5.0,
+        help="Minimum seconds between requests to the same external domain (default: 5.0)"
+    )
+
+    output = parser.add_argument_group("output")
+    output.add_argument(
         "--output-dir",
         metavar="DIR",
         help="Directory to write CSV files to (created if missing; default: current directory)"
     )
-    parser.add_argument(
+    output.add_argument(
         "--output-filename",
         metavar="NAME",
         help="Base name for output files instead of {domain}_{timestamp}; "
              "external links go to NAME_external_links.csv"
     )
-    parser.add_argument(
+    output.add_argument(
+        "--broken-only",
+        action="store_true",
+        help="Print a summary of non-200 URLs to stdout after the crawl"
+    )
+
+    requests_group = parser.add_argument_group("requests")
+    requests_group.add_argument(
+        "-t", "--timeout",
+        type=int,
+        default=30,
+        help="Request timeout in seconds (default: 30)"
+    )
+    requests_group.add_argument(
+        "--delay",
+        type=float,
+        default=1.0,
+        help="Delay between requests in seconds (default: 1.0, use 0 for local servers)"
+    )
+
+    config_group = parser.add_argument_group("configuration")
+    config_group.add_argument(
         "--config",
         metavar="PATH",
         help=f"Config file to load (default: {default_config_path()})"
     )
-    parser.add_argument(
+    config_group.add_argument(
         "--no-config",
         action="store_true",
         help="Ignore any config file"
     )
-    parser.add_argument(
+
+    safety = parser.add_argument_group("safety overrides")
+    safety.add_argument(
         "--allow-private",
         action="store_true",
         help="Allow crawling domains that resolve to private/reserved IPs"
     )
-    parser.add_argument(
+    safety.add_argument(
         "--ignore-robots",
         action="store_true",
         help="Ignore robots.txt rules when crawling"
