@@ -1,5 +1,7 @@
 import pytest
 from sitewalker.crawler import (
+    PageResult,
+    MAX_TITLE_LENGTH,
     WebsiteCrawler, URLProcessingError, SSRFProtectionError,
     validate_domain_ssrf
 )
@@ -99,9 +101,9 @@ def test_crawl_page():
     # Check results
     assert len(crawler.visited_urls) == 1
     assert len(crawler.results) == 1
-    assert crawler.results[0][0] == 'https://example.com'
-    assert crawler.results[0][1] == 'Test Page'
-    assert crawler.results[0][2] == 200
+    assert crawler.results[0].url == 'https://example.com'
+    assert crawler.results[0].title == 'Test Page'
+    assert crawler.results[0].status == 200
 
 
 @responses.activate
@@ -164,7 +166,7 @@ def test_recursive_crawl():
     assert 'https://example.com/page2' in crawler.visited_urls
 
     # Check that titles were collected
-    titles = [r[1] for r in crawler.results]
+    titles = [r.title for r in crawler.results]
     assert 'Home' in titles
     assert 'Page 1' in titles
     assert 'Page 2' in titles
@@ -257,7 +259,7 @@ def test_crawl_page_with_invalid_html():
 
     # Check that page was processed despite invalid HTML
     assert len(crawler.results) == 1
-    assert crawler.results[0][1] == "No title"
+    assert crawler.results[0].title == "No title"
 
 
 @responses.activate
@@ -275,16 +277,16 @@ def test_crawl_page_with_empty_title():
     crawler.crawl()
 
     assert len(crawler.results) == 1
-    assert crawler.results[0][1] == "No title"
+    assert crawler.results[0].title == "No title"
 
 
 def test_save_results():
     """Test saving results to a CSV file"""
     crawler = WebsiteCrawler("example.com")
     crawler.results = [
-        ("https://example.com", "Home Page", 200),
-        ("https://example.com/about", "About Us", 200),
-        ("https://example.com/contact", "Contact", 404)
+        PageResult("https://example.com", "Home Page", 200),
+        PageResult("https://example.com/about", "About Us", 200),
+        PageResult("https://example.com/contact", "Contact", 404)
     ]
 
     # Create a temporary file
@@ -301,9 +303,9 @@ def test_save_results():
             rows = list(reader)
 
             # Check header and content
-            assert rows[0] == ["URL", "Title", "Status Code"]
+            assert rows[0] == ["URL", "Title", "Status Code", "Found On"]
             assert len(rows) == 4  # Header + 3 results
-            assert rows[1] == ["https://example.com", "Home Page", "200"]
+            assert rows[1] == ["https://example.com", "Home Page", "200", ""]
 
     finally:
         os.unlink(output_file)
@@ -328,7 +330,7 @@ def test_crawl_page_with_missing_title():
 
     # Check that page was processed with default title
     assert len(crawler.results) == 1
-    assert crawler.results[0][1] == "No title"
+    assert crawler.results[0].title == "No title"
 
 
 @responses.activate
@@ -418,7 +420,7 @@ def test_crawl_page_with_malformed_links():
     # Check that the page was processed without errors
     assert len(crawler.visited_urls) == 1
     assert len(crawler.results) == 1
-    assert crawler.results[0][0] == 'https://example.com'
+    assert crawler.results[0].url == 'https://example.com'
 
 
 @responses.activate
@@ -615,8 +617,7 @@ def test_crawl_with_non_page_skipped(crawler_instance):
 
     assert base_url in crawler_instance.visited_urls
     assert non_page_url not in crawler_instance.visited_urls
-    assert not any(url == non_page_url for url, _,
-                   _ in crawler_instance.results)
+    assert not any(r.url == non_page_url for r in crawler_instance.results)
 
 
 def test_is_page_exception(crawler_instance, caplog):
@@ -640,7 +641,7 @@ def test_save_results_empty(crawler_instance, tmp_path):
     assert output_file.exists()
     with open(output_file, 'r') as f:
         content = f.read()
-        assert content.strip() == "URL,Title,Status Code"
+        assert content.strip() == "URL,Title,Status Code,Found On"
 
 
 def test_ssrf_blocks_localhost():
@@ -795,7 +796,7 @@ def test_csv_sanitization_in_output(tmp_path):
     """Test that saved CSV files have sanitized values."""
     crawler = WebsiteCrawler("example.com")
     crawler.results = [
-        ("https://example.com", "=HYPERLINK('evil')", 200),
+        PageResult("https://example.com", "=HYPERLINK('evil')", 200),
     ]
     output_file = tmp_path / "results.csv"
     crawler.save_results(str(output_file))
@@ -854,8 +855,8 @@ def test_save_results_unix_line_endings(tmp_path):
     """Test that saved CSV uses Unix line endings (no \\r)."""
     crawler = WebsiteCrawler("example.com")
     crawler.results = [
-        ("https://example.com", "Home Page", 200),
-        ("https://example.com/about", "About Us", 200),
+        PageResult("https://example.com", "Home Page", 200),
+        PageResult("https://example.com/about", "About Us", 200),
     ]
     output_file = tmp_path / "results.csv"
     crawler.save_results(str(output_file))
@@ -1048,3 +1049,85 @@ def test_queue_size_is_capped(caplog):
     assert "Queue limit reached (10 URLs" in caplog.text
     # Only max_pages were actually visited
     assert len(crawler.visited_urls) == 2
+
+
+
+# --- PageResult / Found On (#14 part 1) and title truncation (#9) ---
+
+@responses.activate
+def test_found_on_records_first_referrer():
+    """Each result records the page it was first discovered on; the start URL has none."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><head><title>Home</title></head><body>'
+             '<a href="/a">A</a><a href="/b">B</a></body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/a',
+        body='<html><head><title>A</title></head><body>'
+             '<a href="/b">B again</a><a href="/c">C</a></body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/b',
+        body='<html><head><title>B</title></head></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/c',
+        body='<html><head><title>C</title></head></html>', status=200)
+
+    crawler.crawl(recursive=True)
+
+    found_on = {r.url: r.found_on for r in crawler.results}
+    assert found_on['https://example.com'] == ''
+    assert found_on['https://example.com/a'] == 'https://example.com'
+    # /b is linked from both / and /a; BFS discovers it from / first
+    assert found_on['https://example.com/b'] == 'https://example.com'
+    assert found_on['https://example.com/c'] == 'https://example.com/a'
+
+
+@responses.activate
+def test_found_on_recorded_for_error_pages():
+    """A 404 keeps its referrer so the broken link can be traced back."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    responses.add(responses.GET, 'https://example.com',
+        body='<html><body><a href="/missing">x</a></body></html>', status=200)
+    responses.add(responses.GET, 'https://example.com/missing', status=404)
+
+    crawler.crawl(recursive=True)
+
+    broken = next(r for r in crawler.results if r.status == 404)
+    assert broken.url == 'https://example.com/missing'
+    assert broken.title == 'Error'
+    assert broken.found_on == 'https://example.com'
+
+
+@responses.activate
+def test_title_is_truncated():
+    """Titles longer than MAX_TITLE_LENGTH are cut to prevent CSV bloat."""
+    crawler = WebsiteCrawler("example.com", delay=0)
+    long_title = 'x' * (MAX_TITLE_LENGTH + 500)
+    responses.add(responses.GET, 'https://example.com',
+        body=f'<html><head><title>{long_title}</title></head></html>', status=200)
+
+    crawler.crawl()
+
+    assert len(crawler.results[0].title) == MAX_TITLE_LENGTH
+
+
+def test_save_results_writes_found_on_column(tmp_path):
+    crawler = WebsiteCrawler("example.com")
+    crawler.results = [
+        PageResult("https://example.com", "Home", 200),
+        PageResult("https://example.com/about", "About", 200, found_on="https://example.com"),
+    ]
+    output_file = tmp_path / "results.csv"
+    crawler.save_results(str(output_file))
+
+    with open(output_file, newline='', encoding='utf-8') as f:
+        rows = list(csv.reader(f))
+    assert rows[0] == ["URL", "Title", "Status Code", "Found On"]
+    assert rows[1] == ["https://example.com", "Home", "200", ""]
+    assert rows[2] == ["https://example.com/about", "About", "200", "https://example.com"]
+
+
+def test_save_results_sanitizes_found_on(tmp_path):
+    """Found On is a URL from the crawl and goes through the same CSV-injection guard."""
+    crawler = WebsiteCrawler("example.com")
+    crawler.results = [PageResult("https://example.com/x", "X", 200, found_on="=cmd|calc")]
+    output_file = tmp_path / "results.csv"
+    crawler.save_results(str(output_file))
+    assert "'=cmd|calc" in output_file.read_text()

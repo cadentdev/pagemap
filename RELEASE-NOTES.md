@@ -4,9 +4,13 @@
 
 ### Features
 
+- **`Found On` column** — The results CSV now records the page each URL was first discovered on (empty for the start URL). When a link returns 404, this is the page that needs fixing. (#14, part 1)
+
 - **`--output-dir` and `--output-filename` flags** — Choose where CSVs are written and what they're called. `--output-dir` is created on demand and validated before the crawl starts, so a bad path fails fast. `--output-filename NAME` replaces the generated `{domain}_{timestamp}` base; external links go to `NAME_external_links.csv`. The default remains the current directory. (#16)
 
 ### Fixes
+
+- **Title truncation** — Page titles are capped at 256 characters in the CSV, so a page with a maliciously long `<title>` can't bloat the output. (#9, title half)
 
 - **Stricter output filename sanitization** — Domain-derived filenames now use a character whitelist, strip leading dots/dashes, and are capped at 100 characters, covering NUL bytes, `~`, and very long hostnames. `--output-filename` rejects any path separators or `..`, so user-supplied names cannot escape the output directory. (#9, filename half; title truncation follows with the results-model change)
 
