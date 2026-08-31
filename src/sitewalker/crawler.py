@@ -26,11 +26,12 @@ class PageResult:
     title: str
     status: int | None  # None for rows never fetched (e.g. skipped: max_depth)
     found_on: str = ""  # URL of the page this one was first discovered on; "" for the start URL
+    kind: str = "page"  # "page" (parsed for links) or "asset" (recorded only)
 
-    CSV_HEADER = ('URL', 'Title', 'Status Code', 'Found On')
+    CSV_HEADER = ('URL', 'Title', 'Status Code', 'Found On', 'Kind')
 
     def as_row(self) -> tuple:
-        return (self.url, self.title, self.status, self.found_on)
+        return (self.url, self.title, self.status, self.found_on, self.kind)
 
 # List of file extensions that are considered web pages
 PAGE_EXTENSIONS = {
@@ -109,9 +110,10 @@ class WebsiteCrawler:
         self.results: List[PageResult] = []
         self.external_links: Set[str] = set()
         self.external_links_checked: List[Tuple[str, int]] = []
-        # URLs discovered beyond max_depth, mapped to the page they were found on
-        self.depth_limited_urls: dict[str, str] = {}
+        # URLs discovered beyond max_depth, mapped to (found_on, kind)
+        self.depth_limited_urls: dict[str, tuple[str, str]] = {}
         self.pages_only: bool = False
+        self.include_assets: bool = False
         self.timeout = timeout
         self.delay = delay
         # Minimum seconds between requests to the same external domain
@@ -208,7 +210,7 @@ class WebsiteCrawler:
     def crawl(self, collect_external: bool = False, check_external: bool = False,
               recursive: bool = False, pages_only: bool = False,
               max_pages: int = 1000, max_depth: int = 10,
-              max_external_links: int = 500) -> None:
+              max_external_links: int = 500, include_assets: bool = False) -> None:
         """
         Crawl the website starting from the base URL using BFS.
 
@@ -226,8 +228,14 @@ class WebsiteCrawler:
         The set of discovered-but-unvisited URLs is capped at
         QUEUE_MULTIPLIER * max_pages so dense link graphs cannot grow the
         queue without bound.
+
+        include_assets extends discovery to img/script/link/source
+        references (src, href, srcset). Assets are fetched for their HTTP
+        status and recorded, but never parsed for further links. They are
+        recorded even in non-recursive mode and count toward max_pages.
         """
         self.pages_only = pages_only
+        self.include_assets = include_assets
         self.max_pages = max_pages
         self.max_depth = max_depth
         self.max_external_links = max_external_links
@@ -237,42 +245,49 @@ class WebsiteCrawler:
         logger.info(f"Starting crawl of {self.base_url}")
         logger.info(f"Mode: {'Recursive' if recursive else 'Single-level'} crawl, "
                    f"{'collecting' if collect_external else 'ignoring'} external links, "
-                   f"{'pages only' if pages_only else 'all files'}, "
+                   f"discovery: anchors{'+assets' if include_assets else ''}, "
+                   f"filter: {'pages only' if pages_only else 'none'}, "
                    f"max_pages={max_pages}, max_depth={max_depth}")
 
-        # BFS queue: (url, depth, found_on)
-        queue: deque[Tuple[str, int, str]] = deque()
-        queue.append((self.base_url, 0, ""))
+        # BFS queue: (url, depth, found_on, kind)
+        queue: deque[Tuple[str, int, str, str]] = deque()
+        queue.append((self.base_url, 0, "", "page"))
         # Track URLs already queued to avoid duplicates in the queue
         queued: Set[str] = {self.base_url}
 
         while queue:
-            url, depth, found_on = queue.popleft()
+            url, depth, found_on, kind = queue.popleft()
             if len(self.visited_urls) >= self.max_pages:
                 logger.info(f"Reached max_pages limit ({self.max_pages})")
                 break
 
+            if kind == "asset":
+                self._record_asset(url, found_on)
+                continue
             discovered = self._process_page(url, collect_external, depth, found_on)
 
-            if recursive:
-                for next_url in discovered:
-                    if next_url in queued:
-                        continue
-                    next_depth = depth + 1
-                    if next_depth > self.max_depth:
-                        self.depth_limited_urls.setdefault(next_url, url)
-                        continue
-                    if len(queued) >= max_queued:
-                        if not queue_capped:
-                            queue_capped = True
-                            logger.warning(
-                                f"WARNING: Queue limit reached ({max_queued} URLs, "
-                                f"{self.QUEUE_MULTIPLIER}x max_pages). "
-                                f"Newly discovered URLs will be ignored."
-                            )
-                        break
-                    queued.add(next_url)
-                    queue.append((next_url, next_depth, url))
+            for next_url, next_kind in discovered:
+                # Page links are only followed in recursive mode;
+                # assets are recorded whenever discovered.
+                if next_kind == "page" and not recursive:
+                    continue
+                if next_url in queued:
+                    continue
+                next_depth = depth + 1
+                if next_depth > self.max_depth:
+                    self.depth_limited_urls.setdefault(next_url, (url, next_kind))
+                    continue
+                if len(queued) >= max_queued:
+                    if not queue_capped:
+                        queue_capped = True
+                        logger.warning(
+                            f"WARNING: Queue limit reached ({max_queued} URLs, "
+                            f"{self.QUEUE_MULTIPLIER}x max_pages). "
+                            f"Newly discovered URLs will be ignored."
+                        )
+                    break
+                queued.add(next_url)
+                queue.append((next_url, next_depth, url, next_kind))
 
         logger.info(f"Crawl complete. Visited {len(self.visited_urls)} pages")
         skipped = self.depth_limited_urls.keys() - self.visited_urls
@@ -283,20 +298,68 @@ class WebsiteCrawler:
                 f"Increase --max-depth to crawl them."
             )
             for url in sorted(skipped):
+                ref, skipped_kind = self.depth_limited_urls[url]
                 self.results.append(PageResult(
-                    url, "skipped: max_depth", None, self.depth_limited_urls[url]))
+                    url, "skipped: max_depth", None, ref, skipped_kind))
         if collect_external:
             logger.info(f"Found {len(self.external_links)} unique external links")
             if check_external:
                 self._check_external_links()
 
+    ASSET_SELECTORS = (('img', 'src'), ('script', 'src'),
+                       ('link', 'href'), ('source', 'src'))
+
+    @staticmethod
+    def _extract_asset_urls(soup, base_url: str) -> List[str]:
+        """Collect asset references (src/href/srcset) from a parsed page."""
+        urls: List[str] = []
+        for tag, attr in WebsiteCrawler.ASSET_SELECTORS:
+            for el in soup.find_all(tag, **{attr: True}):
+                urls.append(urljoin(base_url, el[attr]))
+        # srcset: comma-separated "url [descriptor]" candidates
+        for el in soup.find_all(('img', 'source'), srcset=True):
+            for candidate in el['srcset'].split(','):
+                parts = candidate.strip().split()
+                if parts:
+                    urls.append(urljoin(base_url, parts[0]))
+        return urls
+
+    def _record_asset(self, url: str, found_on: str) -> None:
+        """Fetch an asset for its HTTP status and record it — never parse it.
+
+        Uses HEAD (with a GET fallback on 405, body not downloaded) so a
+        4 MB image costs a header exchange, not a transfer.
+        """
+        try:
+            clean_url, is_internal = self.process_url(url)
+            if not is_internal or clean_url in self.visited_urls:
+                return
+            if not self._is_allowed_by_robots(clean_url):
+                logger.debug(f"Blocked by robots.txt: {clean_url}")
+                return
+            self.visited_urls.add(clean_url)
+            logger.debug(f"Recording asset {clean_url}")
+            resp = self.session.head(clean_url, timeout=self.timeout,
+                                     allow_redirects=True)
+            status = resp.status_code
+            if status == 405:
+                resp = self.session.get(clean_url, timeout=self.timeout, stream=True)
+                status = resp.status_code
+                resp.close()
+            self.results.append(PageResult(clean_url, "", status, found_on, "asset"))
+        except Exception as e:
+            logger.error(f"Error fetching asset {url}: {str(e)}")
+            self.results.append(PageResult(url, "Error", 0, found_on, "asset"))
+        if self.delay > 0:
+            time.sleep(self.delay)
+
     def _process_page(self, url: str, collect_external: bool, depth: int,
-                      found_on: str = "") -> List[str]:
-        """Fetch a single page and return discovered internal URLs.
+                      found_on: str = "") -> List[Tuple[str, str]]:
+        """Fetch a single page and return discovered internal (url, kind) pairs.
 
         found_on is the URL of the page this one was first discovered on.
         """
-        discovered: List[str] = []
+        discovered: List[Tuple[str, str]] = []
         try:
             clean_url, is_internal = self.process_url(url)
             if not is_internal or clean_url in self.visited_urls:
@@ -333,12 +396,24 @@ class WebsiteCrawler:
 
                     if next_is_internal:
                         if next_clean_url not in self.visited_urls:
-                            discovered.append(next_clean_url)
+                            discovered.append((next_clean_url, "page"))
                     elif collect_external:
                         self.external_links.add(next_clean_url)
 
                 except URLProcessingError:
                     continue
+
+            if self.include_assets:
+                for asset_url in self._extract_asset_urls(soup, url):
+                    try:
+                        clean, is_int = self.process_url(asset_url)
+                        if is_int:
+                            if clean not in self.visited_urls:
+                                discovered.append((clean, "asset"))
+                        elif collect_external:
+                            self.external_links.add(clean)
+                    except URLProcessingError:
+                        continue
 
         except requests.HTTPError as e:
             logger.error(f"HTTP Error crawling {url}: {str(e)}")

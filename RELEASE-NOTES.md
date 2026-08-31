@@ -11,8 +11,11 @@
 - **Depth-skipped URLs appear in the output** — URLs discovered beyond `--max-depth` are now rows in the results CSV (title `skipped: max_depth`, empty status, Found On preserved) instead of only a log warning. A malformed link at the depth boundary is no longer invisible. (#14, part 2)
 - **`--broken-only` flag** — Prints a summary of all non-200 internal URLs (with the page each was found on) and broken external links to stdout after the crawl, so there's nothing to grep out of the logs. (#14)
 
+- **`-a`/`--assets` flag** — Discovery now optionally extends beyond anchors to `img[src]`, `script[src]`, `link[href]`, `source[src]`, and `srcset`. Assets are fetched for their HTTP status with HEAD (GET fallback on 405, body never downloaded), recorded with `Kind=asset` and an empty title, and never parsed for further links. They are recorded even in non-recursive mode and count toward `--max-pages`. Without `-a` an anchors-only crawl of an image-heavy site can miss most of its URL inventory — the motivating case under-reported a 417-URL site as 95. (#15)
+
 ### Fixes
 
+- **Crawl-mode log line no longer overstates scope** — The startup log now states discovery scope (`discovery: anchors` or `anchors+assets`) and filter separately, instead of the misleading "all files", which described the filter while discovery was anchors-only. (#15)
 - **Title truncation** — Page titles are capped at 256 characters in the CSV, so a page with a maliciously long `<title>` can't bloat the output. (#9, title half)
 
 - **Stricter output filename sanitization** — Domain-derived filenames now use a character whitelist, strip leading dots/dashes, and are capped at 100 characters, covering NUL bytes, `~`, and very long hostnames. `--output-filename` rejects any path separators or `..`, so user-supplied names cannot escape the output directory. (#9, filename half; title truncation follows with the results-model change)

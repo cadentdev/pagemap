@@ -36,7 +36,7 @@ def test_main_with_domain():
             with patch.object(sys, 'argv', ['sitewalker', 'example.com']):
                 main()
 
-                mock_crawler.crawl.assert_called_once_with(collect_external=False, check_external=False, recursive=False, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500)
+                mock_crawler.crawl.assert_called_once_with(collect_external=False, check_external=False, recursive=False, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500, include_assets=False)
                 mock_crawler.save_results.assert_called_once()
 
 def test_main_with_full_url():
@@ -47,7 +47,7 @@ def test_main_with_full_url():
         with patch.object(sys, 'argv', ['sitewalker', 'http://example.com']):
             main()
 
-            mock_crawler.crawl.assert_called_once_with(collect_external=False, check_external=False, recursive=False, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500)
+            mock_crawler.crawl.assert_called_once_with(collect_external=False, check_external=False, recursive=False, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500, include_assets=False)
             mock_crawler.save_results.assert_called_once()
 
 def test_main_bare_domain_https_fails(capsys, reset_logging):
@@ -70,7 +70,7 @@ def test_main_with_external_links():
             with patch.object(sys, 'argv', ['sitewalker', 'example.com', '-e']):
                 main()
 
-                mock_crawler.crawl.assert_called_once_with(collect_external=True, check_external=False, recursive=False, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500)
+                mock_crawler.crawl.assert_called_once_with(collect_external=True, check_external=False, recursive=False, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500, include_assets=False)
                 mock_crawler.save_external_links_results.assert_called_once()
                 mock_crawler.save_results.assert_called_once()
 
@@ -83,7 +83,7 @@ def test_main_with_recursive():
             with patch.object(sys, 'argv', ['sitewalker', 'example.com', '-r']):
                 main()
 
-                mock_crawler.crawl.assert_called_once_with(collect_external=False, check_external=False, recursive=True, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500)
+                mock_crawler.crawl.assert_called_once_with(collect_external=False, check_external=False, recursive=True, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500, include_assets=False)
                 mock_crawler.save_results.assert_called_once()
 
 def test_setup_logging_verbose(reset_logging):
@@ -121,7 +121,7 @@ def test_main_with_all_options():
             with patch.object(sys, 'argv', ['sitewalker', 'example.com', '-e', '-v', '-r']):
                 main()
 
-                mock_crawler.crawl.assert_called_once_with(collect_external=True, check_external=False, recursive=True, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500)
+                mock_crawler.crawl.assert_called_once_with(collect_external=True, check_external=False, recursive=True, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500, include_assets=False)
                 mock_crawler.save_external_links_results.assert_called_once()
                 mock_crawler.save_results.assert_called_once()
 
@@ -135,7 +135,7 @@ def test_main_with_check_external():
             with patch.object(sys, 'argv', ['sitewalker', 'example.com', '-e', '--check-external']):
                 main()
 
-                mock_crawler.crawl.assert_called_once_with(collect_external=True, check_external=True, recursive=False, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500)
+                mock_crawler.crawl.assert_called_once_with(collect_external=True, check_external=True, recursive=False, pages_only=False, max_pages=1000, max_depth=10, max_external_links=500, include_assets=False)
                 mock_crawler.save_external_links_results.assert_called_once()
                 mock_crawler.save_results.assert_called_once()
 
@@ -313,3 +313,13 @@ def test_main_broken_only_flag(capsys):
                 main()
     out = capsys.readouterr().out
     assert "500  https://example.com/bad" in out
+
+
+def test_main_with_assets_flag():
+    """-a passes include_assets=True to crawl."""
+    mock_crawler = MagicMock()
+    with patch('sitewalker.cli.requests.head'):
+        with patch('sitewalker.cli.WebsiteCrawler', return_value=mock_crawler):
+            with patch.object(sys, 'argv', ['sitewalker', 'example.com', '-a']):
+                main()
+    assert mock_crawler.crawl.call_args.kwargs['include_assets'] is True

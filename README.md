@@ -30,6 +30,9 @@ sitewalker example.com -e --check-external
 # Recursive crawl with external link collection
 sitewalker example.com -r -e
 
+# Include images, stylesheets, and scripts in the inventory
+sitewalker example.com -r -a
+
 # Only crawl web pages (skip images, PDFs, etc.)
 sitewalker example.com -r -p
 
@@ -50,6 +53,7 @@ The target accepts a bare domain (`example.com`) or a full URL (`http://example.
 | `-e`, `--external-links` | Collect external links | Off |
 | `--check-external` | Check HTTP status of external links (requires `-e`) | Off |
 | `-p`, `--pages` | Only crawl web pages (HTML, PHP, etc.) | Off |
+| `-a`, `--assets` | Also discover `img`/`script`/`link`/`source` assets (recorded via HEAD, never parsed) | Off |
 | `-v`, `--verbose` | Enable verbose/debug output | Off |
 | `-t`, `--timeout` | Request timeout in seconds | 30 |
 | `--max-pages` | Maximum number of pages to crawl | 1000 |
@@ -78,6 +82,7 @@ sitewalker example.com -r -e --output-dir ~/crawls --output-filename acme-audit
 - **Title** — the page's `<title>` tag content
 - **Status Code** — HTTP response status
 - **Found On** — the page where this URL was first discovered (empty for the start URL). For a broken link, this is the page to fix.
+- **Kind** — `page` (fetched and parsed for links) or `asset` (recorded only, when `-a` is used).
 
 URLs discovered beyond `--max-depth` are included as rows with title `skipped: max_depth` and an empty status code, so nothing the crawler saw is invisible in the output. Use `--broken-only` to print a summary of every non-200 URL (with its Found On page) to stdout at the end of the run.
 

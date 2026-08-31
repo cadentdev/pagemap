@@ -168,6 +168,12 @@ def main():
         help="Minimum seconds between requests to the same external domain (default: 5.0)"
     )
     parser.add_argument(
+        "-a", "--assets",
+        action="store_true",
+        help="Also discover and record img/script/link/source assets "
+             "(fetched for status via HEAD, never parsed; counts toward --max-pages)"
+    )
+    parser.add_argument(
         "--broken-only",
         action="store_true",
         help="Print a summary of non-200 URLs to stdout after the crawl"
@@ -234,7 +240,8 @@ def main():
             pages_only=args.pages,
             max_pages=args.max_pages,
             max_depth=args.max_depth,
-            max_external_links=args.max_external_links
+            max_external_links=args.max_external_links,
+            include_assets=args.assets
         )
 
         # Always save internal pages CSV
