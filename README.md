@@ -33,6 +33,9 @@ sitewalker example.com -r -e
 # Include images, stylesheets, and scripts in the inventory
 sitewalker example.com -r -a
 
+# Hunt broken links: non-200s summarized on stdout, with the page to fix
+sitewalker example.com -r --broken-only
+
 # Only crawl web pages (skip images, PDFs, etc.)
 sitewalker example.com -r -p
 
@@ -115,7 +118,7 @@ When using `-e`, external links are additionally saved to `{domain}_{timestamp}_
 ## Roadmap
 
 - `--format json` — JSON output format
-- `--images --check-alt` — image inventory with alt text auditing
+- `--check-alt` — alt text auditing for the image inventory (`-a` covers the inventory itself)
 
 ## License
 
