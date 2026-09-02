@@ -1,6 +1,6 @@
 # sitewalker
 
-Crawl a website and create a structured map of its pages.
+Crawl a website and create a structured map of its pages. Works great with your favorite AI agent!
 
 ## Requirements
 
